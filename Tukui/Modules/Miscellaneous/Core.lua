@@ -29,6 +29,8 @@ function Miscellaneous:Enable()
 
 	if T.Retail then
 		Miscellaneous["TalkingHead"]:Enable()
+		Miscellaneous["DamageMeter"]:Enable()
+		Miscellaneous["TimerBars"]:Enable()
 		Miscellaneous["LossControl"]:Enable()
 		Miscellaneous["DeathRecap"]:Enable()
 		Miscellaneous["Ghost"]:Enable()

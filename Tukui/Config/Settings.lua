@@ -30,9 +30,15 @@ C["General"] = {
 		["Options"] = {
 			["Express Way"] = "Interface\\AddOns\\Tukui\\Medias\\Fonts\\Expressway.ttf",
 			["PT Sans Narrow"] = "Interface\\AddOns\\Tukui\\Medias\\Fonts\\PtSansNarrow.ttf",
+			["Ubuntu Condensed"] = "Interface\\AddOns\\Tukui\\Medias\\Fonts\\UbuntuCondensed.ttf",
+			["JetBrains Mono"] = "Interface\\AddOns\\Tukui\\Medias\\Fonts\\JetBrainsMonoNLNerdFontMono-Medium.ttf",
+			["Roboto Condensed SemiBold"] = "Interface\\AddOns\\Tukui\\Medias\\Fonts\\RobotoCondensed-SemiBold.ttf",
+			["Ubuntu Bold"] = "Interface\\AddOns\\Tukui\\Medias\\Fonts\\UbuntuNerdFontPropo-Bold.ttf",
+			["Ubuntu Bold Tight"] = "Interface\\AddOns\\Tukui\\Medias\\Fonts\\UbuntuNerdFontPropo-BoldTight.ttf",
+			["Ubuntu Sans Bold 85"] = "Interface\\AddOns\\Tukui\\Medias\\Fonts\\UbuntuSans-Bold-Width85.ttf",
 		},
 
-		["Value"] = "Interface\\AddOns\\Tukui\\Medias\\Fonts\\Expressway.ttf",
+		["Value"] = "Interface\\AddOns\\Tukui\\Medias\\Fonts\\UbuntuSans-Bold-Width85.ttf",
 	},
 }
 
@@ -86,6 +92,7 @@ C["Auras"] = {
 	["HideDebuffs"] = false,
 	["Animation"] = false,
 	["BuffsPerRow"] = 12,
+	["GrowRight"] = false,
 	["Font"] = "Tukui Outline",
 }
 
@@ -188,6 +195,10 @@ C["Misc"] = {
 		["Value"] = "Minimalist",
 	},
 	["ObjectiveTracker"] = true,
+	["TimerBarsWidth"] = 290,
+	["TimerBarsHeight"] = 17,
+	["TimerBarsFontSize"] = 13,
+	["TimerBarsFont"] = "Tukui",
 }
 
 C["Maps"] = {
@@ -353,6 +364,7 @@ C["UnitFrames"] = {
 	},
 	["ClassBar"] = true,
 	["PlayerAuraBars"] = false,
+	["TargetAuraBars"] = false,
 	["ScrollingCombatText"] = false,
 	["ScrollingCombatTextIcon"] = true,
 	["ScrollingCombatTextFontSize"] = 22,
@@ -423,7 +435,7 @@ C["UnitFrames"] = {
 			["HP / Max HP and Percent"] = "|cff549654[Tukui:CurrentHP] / [Tukui:MaxHP] - [perhp]%|r",
 		},
 
-		["Value"] = "|cff549654[Tukui:CurrentHP]|r",
+		["Value"] = "|cff549654[perhp]%|r",
 	},
 	["TargetHealthTag"] = {
 		["Options"] = {
@@ -433,7 +445,7 @@ C["UnitFrames"] = {
 			["HP / Max HP and Percent"] = "|cff549654[Tukui:CurrentHP] / [Tukui:MaxHP] - [perhp]%|r",
 		},
 
-		["Value"] = "|cff549654[Tukui:CurrentHP]|r",
+		["Value"] = "|cff549654[perhp]%|r",
 	},
 	["FocusHealthTag"] = {
 		["Options"] = {
