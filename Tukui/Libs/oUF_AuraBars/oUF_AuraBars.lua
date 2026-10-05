@@ -228,11 +228,72 @@ local function filterBars(element, unit, filter, limit, isDebuff, offset, dontHi
 	return visible, hidden
 end
 
+-- Blizzard aura container mode (aura data is often secret on this client). Each aura is
+-- an AuraButton laid out like the classic bar: icon, then a duration bar with the spell
+-- name, stacks and remaining time, all driven by Blizzard.
+local function initContainerBar(element, button)
+	local Shared = oUF.TukuiAuraContainer
+	local height, gap = element.height, element.gap
+
+	button:SetSize(height + gap + element.width, height)
+	button:SetTooltipAnchorPoint(element.tooltipAnchor or 'ANCHOR_BOTTOMRIGHT', 0, 0)
+
+	local statusBar = CreateFrame('StatusBar', nil, button)
+	statusBar:SetPoint('TOPLEFT', button, 'TOPLEFT', height + gap, 0)
+	statusBar:SetPoint('BOTTOMRIGHT')
+	statusBar:SetStatusBarTexture(element.auraBarTexture)
+	statusBar:SetStatusBarColor(.2, .6, 1)
+	statusBar:EnableMouse(false)
+
+	local spark = statusBar:CreateTexture(nil, 'OVERLAY')
+	spark:SetTexture([[Interface\CastingBar\UI-CastingBar-Spark]])
+	spark:SetWidth(12)
+	spark:SetBlendMode('ADD')
+	spark:SetPoint('CENTER', statusBar:GetStatusBarTexture(), 'RIGHT')
+	spark:SetShown(element.sparkEnabled)
+
+	local icon = statusBar:CreateTexture(nil, 'ARTWORK')
+	icon:SetPoint('RIGHT', statusBar, 'LEFT', -gap, 0)
+	icon:SetSize(height, height)
+	icon:SetTexCoord(0.1, 0.9, 0.1, 0.9)
+
+	local nameText = statusBar:CreateFontString(nil, 'OVERLAY', element.spellNameObject)
+	nameText:SetPoint('LEFT', statusBar, 'LEFT', 2, 0)
+
+	local countText = statusBar:CreateFontString(nil, 'OVERLAY', element.spellNameObject)
+	countText:SetPoint('LEFT', nameText, 'RIGHT', 2, 0)
+
+	local timeText = statusBar:CreateFontString(nil, 'OVERLAY', element.spellTimeObject)
+	timeText:SetPoint('RIGHT', statusBar, 'RIGHT', -2, 0)
+
+	button:SetIcon(icon)
+	button:SetDurationBar(statusBar, {
+		-- shrink with the remaining time (Blizzard's default fills up with the elapsed time)
+		direction = Enum.StatusBarTimerDirection and Enum.StatusBarTimerDirection.RemainingTime,
+	})
+	button:SetSpellName(nameText)
+	button:SetApplicationCount(countText)
+
+	if not pcall(button.SetDurationText, button, timeText, Shared.GetDurationTextOptions()) then
+		button:SetDurationText(timeText)
+	end
+
+	statusBar.icon = icon
+	statusBar.countText = countText
+	statusBar.nameText = nameText
+	statusBar.timeText = timeText
+	statusBar.spark = spark
+
+	if(element.PostCreateBar) then element:PostCreateBar(statusBar) end
+end
+
 local function UpdateAuras(self, event, unit)
 	if(self.unit ~= unit) then return end
 
 	local element = self.AuraBars
-	if(element) then
+	if(element and element.Container) then
+		oUF.TukuiAuraContainer.Update(element.Container, unit)
+	elseif(element) then
 		if(element.PreUpdate) then element:PreUpdate(unit) end
 
 		local isFriend = UnitIsFriend('player', unit)
@@ -265,7 +326,7 @@ local function Update(self, event, unit)
 	-- done by UpdateAllElements and :ForceUpdate.
 	if(event == 'ForceUpdate' or not event) then
 		local element = self.AuraBars
-		if(element) then
+		if(element and not element.Container) then
 			(element.SetPosition or SetPosition) (element, 1, element.createdBars)
 		end
 	end
@@ -306,6 +367,19 @@ local function Enable(self)
 			element.tooltipAnchor = element.tooltipAnchor or 'ANCHOR_BOTTOMRIGHT'
 		end
 
+		if oUF.TukuiAuraContainer and not element.Container then
+			element.InitContainerButton = initContainerBar
+			element.num = element.maxBars
+			element['growth-x'] = 'RIGHT'
+			element['growth-y'] = (element.growth == 'DOWN') and 'DOWN' or 'UP'
+
+			oUF.TukuiAuraContainer.Setup(element, element.friendlyAuraType or 'HELPFUL')
+		end
+
+		if element.Container then
+			element.Container:SetEnabled(true)
+		end
+
 		element:Show()
 
 		return true
@@ -317,6 +391,11 @@ local function Disable(self)
 
 	if(element) then
 		self:UnregisterEvent('UNIT_AURA', UpdateAuras)
+
+		if element.Container then
+			element.Container:SetEnabled(false)
+		end
+
 		element:Hide()
 	end
 end

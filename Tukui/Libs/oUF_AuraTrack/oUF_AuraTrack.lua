@@ -364,9 +364,12 @@ local UnitAura = UnitAura
 
 if not UnitAura then
 	UnitAura = function(unitToken, index, filter)
-		local auraData = C_UnitAuras.GetAuraDataByIndex(unitToken, index, filter);
+		-- Forever: GetAuraDataByIndex throws "Auras cannot be accessed when
+		-- secret" on a secret unit in combat. Guard with pcall so the tracker
+		-- simply skips the aura instead of erroring.
+		local ok, auraData = pcall(C_UnitAuras.GetAuraDataByIndex, unitToken, index, filter)
 
-		if not auraData then
+		if not ok or not auraData then
 			return nil
 		end
 
@@ -490,6 +493,81 @@ local UpdateBar = function(self, unit, spellID, texture, id, expiration, duratio
 	AuraTrack.Auras[id]:Show()
 end
 
+-- Blizzard aura container mode. Aura data of group members is often secret on this client,
+-- so the classic code below can't read it. The container shows the player's own HoTs /
+-- shields on the unit ("HELPFUL|PLAYER|RAID_IN_COMBAT", Blizzard's "self-cast HoTs" filter)
+-- as icons or as thin duration bars. Per-spell colors aren't possible there (spell IDs are
+-- secret), so icons always use the spell texture and bars the player's class color.
+local InitTrackBar = function(element, button)
+	local bar = CreateFrame("StatusBar", nil, button)
+	bar:SetAllPoints()
+	bar:SetStatusBarTexture(element.Texture)
+	bar:SetStatusBarColor(element.BarR, element.BarG, element.BarB)
+
+	if element.BarVertical then
+		bar:SetOrientation("VERTICAL")
+	end
+
+	local background = bar:CreateTexture(nil, "BACKGROUND")
+	background:SetAllPoints()
+	background:SetColorTexture(element.BarR * 0.2, element.BarG * 0.2, element.BarB * 0.2)
+
+	button:SetSize(element.BarWidth, element.BarHeight)
+	button:EnableMouse(false)
+	button:SetDurationBar(bar, {
+		-- shrink with the remaining time (Blizzard's default fills up with the elapsed time)
+		direction = Enum.StatusBarTimerDirection and Enum.StatusBarTimerDirection.RemainingTime,
+	})
+end
+
+local SetupTrackContainer = function(self)
+	local Shared = oUF.TukuiAuraContainer
+	local AuraTrack = self.AuraTrack
+
+	AuraTrack.filter = "HELPFUL|PLAYER|RAID_IN_COMBAT"
+	AuraTrack.disableMouse = true
+
+	-- a custom tracker list is still honored (spell ID matching is allowed for buffs on friends)
+	if AuraTrack.Tracker ~= Tracker then
+		local SpellIDs = {}
+
+		for SpellID in pairs(AuraTrack.Tracker) do
+			SpellIDs[SpellID] = true
+		end
+
+		AuraTrack.candidateFilters = {includeSpellIDs = SpellIDs}
+	end
+
+	if AuraTrack.Icons then
+		AuraTrack.num = AuraTrack.MaxAuras
+		AuraTrack.size = AuraTrack.IconSize
+		AuraTrack.spacing = AuraTrack.Spacing
+		AuraTrack["growth-x"] = "RIGHT"
+		AuraTrack["growth-y"] = "DOWN"
+		AuraTrack.containerOffsetX = AuraTrack.Spacing
+		AuraTrack.containerOffsetY = AuraTrack.IconSize / 3
+	else
+		local Vertical = self.Health:GetOrientation() == "VERTICAL"
+		local ClassColor = oUF.colors.class[select(2, UnitClass("player"))]
+
+		AuraTrack.InitContainerButton = InitTrackBar
+		AuraTrack.BarVertical = Vertical
+		AuraTrack.BarWidth = Vertical and AuraTrack.Thickness or AuraTrack:GetWidth()
+		AuraTrack.BarHeight = Vertical and AuraTrack:GetHeight() or AuraTrack.Thickness
+		AuraTrack.BarR, AuraTrack.BarG, AuraTrack.BarB = ClassColor[1] or ClassColor.r, ClassColor[2] or ClassColor.g, ClassColor[3] or ClassColor.b
+		AuraTrack.num = floor((Vertical and AuraTrack:GetWidth() or AuraTrack:GetHeight()) / AuraTrack.Thickness)
+		AuraTrack.spacing = 0
+		AuraTrack["growth-x"] = "LEFT"
+		AuraTrack["growth-y"] = "DOWN"
+	end
+
+	Shared.Setup(AuraTrack, AuraTrack.filter)
+
+	if AuraTrack.Container then
+		AuraTrack.Container:SetEnabled(true)
+	end
+end
+
 local Update = function(self, event, unit)
 	if self.unit ~= unit then
 		return
@@ -504,6 +582,21 @@ local Update = function(self, event, unit)
 	self.AuraTrack.MaxAuras = self.AuraTrack.MaxAuras or 4
 	self.AuraTrack.Spacing = self.AuraTrack.Spacing or 6
 	self.AuraTrack.IconSize = (self.AuraTrack:GetWidth() / self.AuraTrack.MaxAuras) - (self.AuraTrack.Spacing) - (self.AuraTrack.Spacing / (self.AuraTrack.MaxAuras))
+
+	if oUF.TukuiAuraContainer and not self.AuraTrack.NoContainer then
+		if not self.AuraTrack.Container then
+			SetupTrackContainer(self)
+
+			-- couldn't create one: use the classic code from now on
+			self.AuraTrack.NoContainer = not self.AuraTrack.Container
+		end
+
+		if self.AuraTrack.Container then
+			oUF.TukuiAuraContainer.Update(self.AuraTrack.Container, unit)
+
+			return
+		end
+	end
 
 	for i = 1, 40 do
 		local name, texture, count, debuffType, duration, expiration, caster, isStealable,
@@ -560,6 +653,10 @@ local function Disable(self)
 	local AuraTrack = self.AuraTrack
 
 	if (AuraTrack) then
+		if AuraTrack.Container then
+			AuraTrack.Container:SetEnabled(false)
+		end
+
 		self:UnregisterEvent("UNIT_AURA", Path)
 	end
 end

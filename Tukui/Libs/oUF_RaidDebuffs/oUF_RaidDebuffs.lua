@@ -367,6 +367,16 @@ end
 
 -- Event handler for UNIT_AURA.
 local function Update(self, event, unit, updateInfo)
+	-- Blizzard aura container (see Enable): it reads the auras itself, only feed it the unit
+	local container = self.RaidDebuffs.Container
+	if container then
+		if self.unit and (unit == nil or unit == self.unit) then
+			oUF.TukuiAuraContainer.Update(container, self.unit)
+		end
+
+		return
+	end
+
 	-- Exit when unit doesn't match or target can't be assisted
 	if event ~= "UNIT_AURA" or self.unit ~= unit or not UnitCanAssist("player", unit) then return end
 
@@ -436,6 +446,39 @@ local function Enable(self)
 			element:CreateBackdrop()
 		end
 
+		-- Aura data of group members is often secret on this client, which the code below
+		-- can't read. Blizzard's aura container can: one icon for the most relevant debuff
+		-- (any debuff, sorted the way Blizzard's unit frames sort them), styled like Tukui's
+		-- aura buttons. "HARMFUL|RAID" (dispellable only) showed nothing for classes that
+		-- can't dispel.
+		local Shared = oUF.TukuiAuraContainer
+		if Shared and not element.Container then
+			element.filter = "HARMFUL"
+			element.sortMethod = AuraContainerSortMethod and AuraContainerSortMethod.UnitFrameDebuff
+			element.num = 1
+			element.size = element:GetWidth()
+			element.isDebuffElement = true
+			element.IsRaid = true
+			element.disableMouse = true
+
+			Shared.Setup(element, "HARMFUL")
+		end
+
+		if element.Container then
+			-- the container draws its own button: hide the classic widgets, keep the frame shown
+			element.Backdrop:SetAlpha(0)
+			element.icon:SetAlpha(0)
+			element.cd:SetAlpha(0)
+			element.timer:SetAlpha(0)
+			element.count:SetAlpha(0)
+			element.Container:SetEnabled(true)
+			element:Show()
+
+			self:RegisterEvent("UNIT_AURA", Update)
+
+			return true
+		end
+
 		-- Update the dispelList at login and whenever spells change (only fires for a player frame)
 		self:RegisterEvent("SPELLS_CHANGED", UpdateDispelList, true)
 		self:RegisterEvent("UNIT_AURA", Update)
@@ -450,6 +493,10 @@ local function Disable(self)
 	local element = self.RaidDebuffs
 
 	if element then
+		if element.Container then
+			element.Container:SetEnabled(false)
+		end
+
 		element.debuffCache = nil
 		self:UnregisterEvent("SPELLS_CHANGED", UpdateDispelList)
 		self:UnregisterEvent("UNIT_AURA", Update)

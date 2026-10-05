@@ -289,6 +289,19 @@ end
 local function UpdateAuras(self, event, unit, updateInfo)
 	if(self.unit ~= unit) then return end
 
+	-- Forever (build 70009) marks some units as "secret". Reading their auras
+	-- while tainted throws "Auras cannot be accessed when secret". Skip them.
+	if(ShouldUnitIdentityBeSecret and ShouldUnitIdentityBeSecret(unit)) then return end
+
+	-- Forever: for secret units UNIT_AURA's updateInfo carries secret values
+	-- (isFullUpdate, addedAuras, updatedAuraInstanceIDs). Any boolean-test or
+	-- iteration over them throws a taint error and their auras are unreadable,
+	-- so skip the whole update rather than touching the secret fields below.
+	if(updateInfo and (
+		(issecretvalue and issecretvalue(updateInfo.isFullUpdate))
+		or (issecrettable and (issecrettable(updateInfo.addedAuras) or issecrettable(updateInfo.updatedAuraInstanceIDs)))
+	)) then return end
+
 	local isFullUpdate = not updateInfo or updateInfo.isFullUpdate
 
 	local auras = self.Auras
@@ -323,9 +336,14 @@ local function UpdateAuras(self, event, unit, updateInfo)
 			auras.activeBuffs = table.wipe(auras.activeBuffs or {})
 			buffsChanged = true
 
-			local slots = {C_UnitAuras.GetAuraSlots(unit, buffFilter)}
-			for i = 2, #slots do -- #1 return is continuationToken, we don't care about it
-				local data = processData(auras, unit, C_UnitAuras.GetAuraDataBySlot(unit, slots[i]))
+				local slots = {}
+				local ok = pcall(function()
+					slots = {C_UnitAuras.GetAuraSlots(unit, buffFilter)}
+				end)
+				if(not ok) then return end
+
+				for i = 2, #slots do -- #1 return is continuationToken, we don't care about it
+					local data = processData(auras, unit, C_UnitAuras.GetAuraDataBySlot(unit, slots[i]))
 				auras.allBuffs[data.auraInstanceID] = data
 
 				--[[ Override: Auras:FilterAura(unit, data)
@@ -348,10 +366,14 @@ local function UpdateAuras(self, event, unit, updateInfo)
 			auras.activeDebuffs = table.wipe(auras.activeDebuffs or {})
 			debuffsChanged = true
 
-			slots = {C_UnitAuras.GetAuraSlots(unit, debuffFilter)}
-			for i = 2, #slots do
-				local data = processData(auras, unit, C_UnitAuras.GetAuraDataBySlot(unit, slots[i]))
-				auras.allDebuffs[data.auraInstanceID] = data
+				local ok = pcall(function()
+					slots = {C_UnitAuras.GetAuraSlots(unit, debuffFilter)}
+				end)
+				if(not ok) then return end
+
+				for i = 2, #slots do
+					local data = processData(auras, unit, C_UnitAuras.GetAuraDataBySlot(unit, slots[i]))
+					auras.allDebuffs[data.auraInstanceID] = data
 
 				if((auras.FilterAura or FilterAura) (auras, unit, data)) then
 					auras.activeDebuffs[data.auraInstanceID] = true
@@ -575,7 +597,7 @@ local function UpdateAuras(self, event, unit, updateInfo)
 	end
 
 	local buffs = self.Buffs
-	if(buffs) then
+	if(buffs and not buffs.Container) then
 		if(buffs.PreUpdate) then buffs:PreUpdate(unit, isFullUpdate) end
 
 		local buffsChanged = false
@@ -590,9 +612,14 @@ local function UpdateAuras(self, event, unit, updateInfo)
 			buffs.active = table.wipe(buffs.active or {})
 			buffsChanged = true
 
-			local slots = {C_UnitAuras.GetAuraSlots(unit, buffFilter)}
-			for i = 2, #slots do
-				local data = processData(buffs, unit, C_UnitAuras.GetAuraDataBySlot(unit, slots[i]))
+				local slots = {}
+				local ok = pcall(function()
+					slots = {C_UnitAuras.GetAuraSlots(unit, buffFilter)}
+				end)
+				if(not ok) then return end
+
+				for i = 2, #slots do
+					local data = processData(buffs, unit, C_UnitAuras.GetAuraDataBySlot(unit, slots[i]))
 				buffs.all[data.auraInstanceID] = data
 
 				if((buffs.FilterAura or FilterAura) (buffs, unit, data)) then
@@ -684,7 +711,7 @@ local function UpdateAuras(self, event, unit, updateInfo)
 	end
 
 	local debuffs = self.Debuffs
-	if(debuffs) then
+	if(debuffs and not debuffs.Container) then
 		if(debuffs.PreUpdate) then debuffs:PreUpdate(unit, isFullUpdate) end
 
 		local debuffsChanged = false
@@ -699,10 +726,15 @@ local function UpdateAuras(self, event, unit, updateInfo)
 			debuffs.active = table.wipe(debuffs.active or {})
 			debuffsChanged = true
 
-			local slots = {C_UnitAuras.GetAuraSlots(unit, debuffFilter)}
-			for i = 2, #slots do
-				local data = processData(debuffs, unit, C_UnitAuras.GetAuraDataBySlot(unit, slots[i]))
-				debuffs.all[data.auraInstanceID] = data
+				local slots = {}
+				local ok = pcall(function()
+					slots = {C_UnitAuras.GetAuraSlots(unit, debuffFilter)}
+				end)
+				if(not ok) then return end
+
+				for i = 2, #slots do
+					local data = processData(debuffs, unit, C_UnitAuras.GetAuraDataBySlot(unit, slots[i]))
+					debuffs.all[data.auraInstanceID] = data
 
 				if((debuffs.FilterAura or FilterAura) (debuffs, unit, data)) then
 					debuffs.active[data.auraInstanceID] = true
@@ -793,8 +825,251 @@ local function UpdateAuras(self, event, unit, updateInfo)
 	end
 end
 
+--[[ Aura containers (Forever / Midnight-era clients)
+
+On this client the aura data of many units is "secret" for addons: it can be displayed but
+not compared or computed with, so the classic code path below can't handle those units.
+Blizzard's AuraContainer widget reads and displays auras itself (icon, cooldown, timer
+text, stacks, dispel type color), so Buffs and Debuffs use it whenever it's available and
+keep the Tukui layout options (size, num, spacing, growth-x/y, onlyShowPlayer).
+--]]
+local T, C = ns[1], ns[2]
+local DispelStyle = Enum.CustomAuraButtonDispelTypeTextureStyle
+local StealableFilter = Enum.CustomAuraButtonDispelTypeStealableFilter
+local BorderEdges = {'BorderTop', 'BorderBottom', 'BorderLeft', 'BorderRight'}
+
+-- The corner the auras grow away from
+local function GetContainerOrigin(element)
+	local growthX = (element['growth-x'] == 'LEFT' and -1) or 1
+	local growthY = (element['growth-y'] == 'DOWN' and -1) or 1
+	local origin = ((growthY == 1) and 'BOTTOM' or 'TOP') .. ((growthX == 1) and 'LEFT' or 'RIGHT')
+
+	return origin, growthX, growthY
+end
+
+-- Tukui's timer text (T.FormatTime: 2d, 3h, 5m, 42, 3.4 - red under 5 seconds), built with
+-- Blizzard's formatter objects since the remaining time itself may be secret.
+local DurationTextOptions
+local function GetDurationTextOptions()
+	if DurationTextOptions == nil then
+		local ok, options = pcall(function()
+			local Up = Enum.NumericRuleFormatRounding.Up
+			local formatter = C_StringUtil.CreateNumericRuleFormatter()
+
+			formatter:SetBreakpoints({
+				{threshold = 0, step = 0.1, rounding = Up, format = '%.1f'},
+				{threshold = 5, step = 1, rounding = Up, format = '%.0f'},
+				{threshold = 60, format = '%.0fm', components = {{div = 60, step = 1, rounding = Up}}},
+				{threshold = 3600, format = '%.0fh', components = {{div = 3600, step = 1, rounding = Up}}},
+				{threshold = 86400, format = '%.0fd', components = {{div = 86400, step = 1, rounding = Up}}},
+			})
+
+			local curve = C_CurveUtil.CreateColorCurve()
+			curve:SetType(Enum.LuaCurveType.Step)
+			curve:AddPoint(0, CreateColor(0.99, 0.31, 0.31))
+			curve:AddPoint(5, CreateColor(1, 1, 1))
+
+			return {
+				textFormatter = formatter,
+				textColor = {curve = curve, property = Enum.DurationTextBindingProperty.RemainingDuration},
+			}
+		end)
+
+		DurationTextOptions = ok and options or false
+	end
+
+	return DurationTextOptions or nil
+end
+
+-- Tukui look for a container aura button. Buttons are not plain Buttons (AuraButton
+-- widget), so Tukui's toolkit methods are called directly instead of button:Method().
+local function StyleContainerButton(element, button)
+	local API = T.Toolkit.API
+	local size = element.size or 16
+
+	button:SetSize(element.width or size, element.height or size)
+	button:EnableMouse(not element.disableMouse)
+	button:SetTooltipAnchorPoint(element.tooltipAnchor or 'ANCHOR_BOTTOMRIGHT', 0, 0)
+
+	API.CreateBackdrop(button)
+
+	if not element.IsRaid then
+		API.CreateShadow(button)
+	end
+
+	local icon = button:CreateTexture(nil, 'ARTWORK')
+	API.SetInside(icon, button)
+	icon:SetTexCoord(unpack(T.IconCoord))
+	button.Icon = icon
+	button:SetIcon(icon)
+
+	local cooldown = CreateFrame('Cooldown', nil, button, 'CooldownFrameTemplate')
+	API.SetInside(cooldown, button)
+	cooldown:SetReverse(true)
+	cooldown:SetHideCountdownNumbers(true)
+	cooldown.noOCC = true
+	cooldown.noCooldownCount = true
+	button.Cooldown = cooldown
+	button:SetDurationCooldown(cooldown)
+
+	-- texts and the dispel border above the cooldown swipe
+	local overlay = CreateFrame('Frame', nil, button)
+	overlay:SetAllPoints()
+	overlay:SetFrameLevel(cooldown:GetFrameLevel() + 1)
+
+	local count = overlay:CreateFontString(nil, 'OVERLAY')
+	count:SetFont(C.Medias.Font, 9, 'THICKOUTLINE')
+	count:SetPoint('BOTTOMRIGHT', 3, -3)
+	count:SetJustifyH('RIGHT')
+	count:SetTextColor(0.84, 0.75, 0.65)
+	button.Count = count
+	button:SetApplicationCount(count)
+
+	-- small icons (nameplates) have no room for a timer, like before
+	if size > 20 then
+		local time = overlay:CreateFontString(nil, 'OVERLAY')
+		time:SetFont(C.Medias.Font, 12, 'THINOUTLINE')
+		time:SetPoint('CENTER', 1, 0)
+		button.Time = time
+
+		-- fall back to Blizzard's default format if the client refuses ours
+		if not pcall(button.SetDurationText, button, time, GetDurationTextOptions()) then
+			button:SetDurationText(time)
+		end
+	end
+
+	-- Border colored by dispel type, drawn over Tukui's own 1px border: debuffs always
+	-- (physical ones in red, like Tukui did), stealable buffs on "animated" elements
+	local options
+	if element.isDebuffElement then
+		options = {style = DispelStyle.PreserveAsset, showWhenHarmful = true, showWhenHelpful = false, showWithoutDispelType = true}
+	elseif element.isAnimated or element.CustomFilter then
+		options = {style = DispelStyle.PreserveAsset, showWhenHarmful = false, showWhenHelpful = true, stealableFilter = StealableFilter.Stealable}
+	end
+
+	if options and button.Backdrop then
+		for _, edge in ipairs(BorderEdges) do
+			local border = button.Backdrop[edge]
+
+			if border then
+				local texture = overlay:CreateTexture(nil, 'OVERLAY', nil, 7)
+				texture:SetTexture([[Interface\Buttons\WHITE8x8]])
+				texture:SetAllPoints(border)
+				button:AddDispelTypeTexture(texture, options)
+			end
+		end
+	end
+
+	if element.isCancellable then
+		button:SetCancelAuraButtons('RightButtonUp')
+	end
+end
+
+-- One group of auras in a container, with the Tukui options of `element`
+local function AddContainerGroup(container, key, element, filter, newLine)
+	filter = element.filter or filter
+
+	if element.onlyShowPlayer then
+		filter = filter .. '|PLAYER'
+	end
+
+	-- Tukui's nameplate buff filter (BuffIsStealable) only shows magic buffs
+	local candidateFilters = element.candidateFilters
+	if not candidateFilters and element.CustomFilter then
+		candidateFilters = {includeDispelTypes = {Magic = true}}
+	end
+
+	local spacing = element['spacing-y'] or element.spacing or 0
+
+	-- optional Blizzard sort (AuraContainerSortMethod), e.g. RaidDebuffs
+	local sortMethod = element.sortMethod
+	local sortDirection = sortMethod and AuraContainerSortDirection and AuraContainerSortDirection.Normal
+
+	container:AddAuraGroup(key, filter, {
+		maxFrameCount = element.num or 32,
+		candidateFilters = candidateFilters,
+		sortMethod = sortDirection and sortMethod or nil,
+		sortDirection = sortDirection and sortMethod and sortDirection or nil,
+		layout = {
+			elementSpacing = element['spacing-x'] or element.spacing or 0,
+			lineSpacing = spacing,
+			groupLineSpacing = spacing,
+			forceNewLine = newLine or nil,
+		},
+		initializeFrame = function(button)
+			-- plugins (aura bars, aura track bars) can style buttons their own way
+			local initialize = element.InitContainerButton or StyleContainerButton
+			initialize(element, button)
+		end,
+	})
+end
+
+local function SetupContainer(element, filter)
+	local ok, container = pcall(CreateFrame, 'AuraContainer', nil, element, 'CustomAuraContainerTemplate')
+	if not ok or not container then
+		return
+	end
+
+	local origin, growthX, growthY = GetContainerOrigin(element)
+	-- nameplates are restricted regions, measuring them may be refused
+	local measured, width = pcall(element.GetWidth, element)
+	if not measured then
+		width = nil
+	end
+
+	-- The container's size is set by Blizzard as a *secret* value: never anchor other
+	-- frames to it, their position would be garbage (e.g. off screen).
+	container:SetPoint(origin, element, origin, element.containerOffsetX or 0, element.containerOffsetY or 0)
+	container:SetSize(1, 1)
+	container:SetFlowLayoutAnchorPoint(origin)
+	container:SetFlowLayoutGrowthDirection(growthX, growthY)
+	container:SetFlowLayoutMaximumLineSize((width and width > 0) and width or (element.size or 16) * 8)
+	container:SetFlowLayoutPadding(0, 0, 0, 0)
+
+	AddContainerGroup(container, 'Tukui', element, filter)
+
+	element.Container = container
+
+	return container
+end
+
+-- Shared with Tukui's oUF plugins (AuraTrack, RaidDebuffs, AuraBars)
+oUF.TukuiAuraContainer = {
+	Setup = SetupContainer,
+	StyleButton = StyleContainerButton,
+	GetDurationTextOptions = GetDurationTextOptions,
+}
+
+-- Set the unit on / refresh a plugin's container
+function oUF.TukuiAuraContainer.Update(container, unit)
+	if container:GetUnit() ~= unit then
+		container:SetUnit(unit)
+	else
+		container:UpdateAllAuras()
+	end
+end
+
+local function UpdateContainers(self, unit)
+	local buffsContainer = self.Buffs and self.Buffs.Container
+
+	for _, element in next, {self.Buffs, self.Debuffs} do
+		local container = element.Container
+
+		-- debuffs sharing the buffs' container (target) are updated with it
+		if container and not (element == self.Debuffs and container == buffsContainer) then
+			if container:GetUnit() ~= unit then
+				container:SetUnit(unit) -- triggers a full update
+			else
+				container:UpdateAllAuras()
+			end
+		end
+	end
+end
+
 local function Update(self, event, unit, updateInfo)
 	if(self.unit ~= unit) then return end
+
+	UpdateContainers(self, unit)
 
 	UpdateAuras(self, event, unit, updateInfo)
 
@@ -807,12 +1082,12 @@ local function Update(self, event, unit, updateInfo)
 		end
 
 		local buffs = self.Buffs
-		if(buffs) then
+		if(buffs and not buffs.Container) then
 			(buffs.SetPosition or SetPosition) (buffs, 1, buffs.createdButtons)
 		end
 
 		local debuffs = self.Debuffs
-		if(debuffs) then
+		if(debuffs and not debuffs.Container) then
 			(debuffs.SetPosition or SetPosition) (debuffs, 1, debuffs.createdButtons)
 		end
 	end
@@ -853,6 +1128,14 @@ local function Enable(self)
 			buffs.visibleButtons = 0
 			buffs.tooltipAnchor = buffs.tooltipAnchor or 'ANCHOR_BOTTOMRIGHT'
 
+			if not buffs.Container then
+				SetupContainer(buffs, 'HELPFUL')
+			end
+
+			if buffs.Container then
+				buffs.Container:SetEnabled(true)
+			end
+
 			buffs:Show()
 		end
 
@@ -867,6 +1150,28 @@ local function Enable(self)
 			debuffs.anchoredButtons = 0
 			debuffs.visibleButtons = 0
 			debuffs.tooltipAnchor = debuffs.tooltipAnchor or 'ANCHOR_BOTTOMRIGHT'
+			debuffs.isDebuffElement = true
+
+			-- Debuffs stacked above the buffs (target): same container, second group on a new
+			-- line, so Blizzard stacks them. Anchoring to the buff container can't work, its
+			-- size is secret.
+			if not debuffs.Container and buffs and buffs.Container and not debuffs.__restricted then
+				local _, relativeTo = debuffs:GetPoint(1)
+
+				if relativeTo == buffs then
+					AddContainerGroup(buffs.Container, 'TukuiDebuffs', debuffs, 'HARMFUL', true)
+					debuffs.Container = buffs.Container
+					buffs.PostUpdate = nil
+				end
+			end
+
+			if not debuffs.Container then
+				SetupContainer(debuffs, 'HARMFUL')
+			end
+
+			if debuffs.Container then
+				debuffs.Container:SetEnabled(true)
+			end
 
 			debuffs:Show()
 		end
@@ -880,8 +1185,14 @@ local function Disable(self)
 		self:UnregisterEvent('UNIT_AURA', UpdateAuras)
 
 		if(self.Auras) then self.Auras:Hide() end
-		if(self.Buffs) then self.Buffs:Hide() end
-		if(self.Debuffs) then self.Debuffs:Hide() end
+		if(self.Buffs) then
+			if self.Buffs.Container then self.Buffs.Container:SetEnabled(false) end
+			self.Buffs:Hide()
+		end
+		if(self.Debuffs) then
+			if self.Debuffs.Container then self.Debuffs.Container:SetEnabled(false) end
+			self.Debuffs:Hide()
+		end
 	end
 end
 
