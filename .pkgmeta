@@ -8,10 +8,6 @@ externals:
     url: https://www.townlong-yak.com/addons.git/taintless
     commit: default
 
-manual-changelog:
-  filename: CHANGELOG.md
-  markup-type: markdown
-
 ignore:
   - "*.md"
   - "*.textile"
