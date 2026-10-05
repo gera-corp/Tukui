@@ -163,7 +163,8 @@ function UnitFrames:Player()
 			Debuffs:SetWidth(252)
 
 			if self.Buffs then
-				Debuffs:SetPoint("BOTTOMLEFT", Buffs, "TOPLEFT", 0, 18)
+				-- self.Buffs: the local Buffs from the block above is out of scope here (was anchoring to the screen)
+				Debuffs:SetPoint("BOTTOMLEFT", self.Buffs, "TOPLEFT", 0, 18)
 			else
 				Debuffs:SetPoint("BOTTOMRIGHT", self, "TOPRIGHT", 1, 4)
 			end

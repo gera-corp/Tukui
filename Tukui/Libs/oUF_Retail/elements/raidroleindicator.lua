@@ -25,6 +25,16 @@ This element updates by changing the texture.
 local _, ns = ...
 local oUF = ns.oUF
 
+-- Tukui (Forever client): group/unit flags can be secret values, which can't be tested.
+-- Like upstream oUF, treat a secret value as "not set" (default).
+local function scrub(value, default)
+	if issecretvalue and issecretvalue(value) then
+		return default
+	end
+
+	return value
+end
+
 local MAINTANK_ICON = [[Interface\GROUPFRAME\UI-GROUP-MAINTANKICON]]
 local MAINASSIST_ICON = [[Interface\GROUPFRAME\UI-GROUP-MAINASSISTICON]]
 
@@ -43,11 +53,11 @@ local function Update(self, event)
 
 	local role, isShown
 	if(UnitInRaid(unit) and not UnitHasVehicleUI(unit)) then
-		if(GetPartyAssignment('MAINTANK', unit)) then
+		if(scrub(GetPartyAssignment('MAINTANK', unit), false)) then
 			isShown = true
 			element:SetTexture(MAINTANK_ICON)
 			role = 'MAINTANK'
-		elseif(GetPartyAssignment('MAINASSIST', unit)) then
+		elseif(scrub(GetPartyAssignment('MAINASSIST', unit), false)) then
 			isShown = true
 			element:SetTexture(MAINASSIST_ICON)
 			role = 'MAINASSIST'

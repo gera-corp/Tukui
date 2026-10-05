@@ -127,6 +127,19 @@ local _ENV = {
 _ENV.ColorGradient = function(...)
 	return _ENV._FRAME:ColorGradient(...)
 end
+-- Tukui (Forever client): color markup for a *secret* class token. Blizzard's C_ClassColor
+-- can take it, but it builds a ColorMixin object that it can't resolve from the tag
+-- environment ("unable to find mixin"), so it's called from here, in the normal environment.
+_ENV.SecretClassColorMarkup = function(class)
+	local ok, markup = pcall(function()
+		return C_ClassColor.GetClassColor(class):GenerateHexColorMarkup()
+	end)
+
+	-- no boolean test on markup itself: it may be a secret string
+	if ok then
+		return markup
+	end
+end
 
 local _PROXY = setmetatable(_ENV, {__index = _G})
 
@@ -246,13 +259,15 @@ local tagStrings = {
 	end]],
 
 	['leader'] = [[function(u)
-		if(UnitIsGroupLeader(u)) then
+		local isLeader = UnitIsGroupLeader(u)
+		if(not issecretvalue(isLeader) and isLeader) then
 			return 'L'
 		end
 	end]],
 
 	['leaderlong']  = [[function(u)
-		if(UnitIsGroupLeader(u)) then
+		local isLeader = UnitIsGroupLeader(u)
+		if(not issecretvalue(isLeader) and isLeader) then
 			return 'Leader'
 		end
 	end]],
@@ -299,12 +314,12 @@ local tagStrings = {
 	end]],
 
 	['perhp'] = [[function(u)
-		local m = UnitHealthMax(u)
-		if(m == 0) then
-			return 0
-		else
-			return math.floor(UnitHealth(u) / m * 100 + .5)
+		local ScaleTo100 = CurveConstants and CurveConstants.ScaleTo100
+		local p = UnitHealthPercent(u, true, ScaleTo100)
+		if(p) then
+			return format('%d', p)
 		end
+		return 0
 	end]],
 
 	['perpp'] = [[function(u)
@@ -350,7 +365,12 @@ local tagStrings = {
 
 	['raidcolor'] = [[function(u)
 		local _, class = UnitClass(u)
-		if(class) then
+		if(class ~= nil) then
+			if(issecretvalue(class)) then
+				-- secret class (Forever client): only Blizzard's colors can take it, as in upstream oUF
+				return SecretClassColorMarkup(class)
+			end
+
 			return Hex(_COLORS.class[class])
 		else
 			local id = u:match('arena(%d)$')
@@ -392,6 +412,10 @@ local tagStrings = {
 
 	['sex'] = [[function(u)
 		local s = UnitSex(u)
+		if(issecretvalue(s)) then
+			return
+		end
+
 		if(s == 2) then
 			return 'Male'
 		elseif(s == 3) then
@@ -736,7 +760,11 @@ local function getTagFunc(tagstr)
 								str = tag(unit, realUnit)
 							end
 
-							if(str and str ~= '') then
+							if(str and (issecretvalue(str) or str ~= '')) then
+								if(issecretvalue(str)) then
+									return C_StringUtil.WrapString(str, prefix, suffix)
+								end
+
 								return prefix .. str .. suffix
 							end
 						end
@@ -749,7 +777,7 @@ local function getTagFunc(tagstr)
 								str = tag(unit, realUnit)
 							end
 
-							if(str and str ~= '') then
+							if(str and (issecretvalue(str) or str ~= '')) then
 								return str
 							end
 						end

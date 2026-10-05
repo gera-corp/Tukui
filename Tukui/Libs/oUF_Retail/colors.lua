@@ -128,12 +128,16 @@ if(not customClassColors()) then
 	end)
 end
 
-for debuffType, color in next, _G.DebuffTypeColor do
-	colors.debuff[debuffType] = oUF:CreateColor(color.r, color.g, color.b)
+if _G.DebuffTypeColor then
+	for debuffType, color in next, _G.DebuffTypeColor do
+		colors.debuff[debuffType] = oUF:CreateColor(color.r, color.g, color.b)
+	end
 end
 
-for eclass, color in next, _G.FACTION_BAR_COLORS do
-	colors.reaction[eclass] = oUF:CreateColor(color.r, color.g, color.b)
+if _G.FACTION_BAR_COLORS then
+	for eclass, color in next, _G.FACTION_BAR_COLORS do
+		colors.reaction[eclass] = oUF:CreateColor(color.r, color.g, color.b)
+	end
 end
 
 local staggerIndices = {

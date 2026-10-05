@@ -243,7 +243,8 @@ function UnitFrames:Target()
 		Debuffs:SetWidth(252)
 
 		if self.Buffs then
-			Debuffs:SetPoint("BOTTOMLEFT", Buffs, "TOPLEFT", 0, 18)
+			-- self.Buffs: the local Buffs from the block above is out of scope here (was anchoring to the screen)
+			Debuffs:SetPoint("BOTTOMLEFT", self.Buffs, "TOPLEFT", 0, 18)
 		else
 			Debuffs:SetPoint("BOTTOMRIGHT", self, "TOPRIGHT", 1, 4)
 		end
@@ -271,6 +272,35 @@ function UnitFrames:Target()
 		end
 
 		self.Debuffs = Debuffs
+	end
+
+	-- Our own debuffs on the target as timer bars (any class); durations come from
+	-- Blizzard's aura container, so they stay correct with secret aura data
+	if (C.UnitFrames.TargetAuraBars) then
+		local AuraBars = CreateFrame("Frame", self:GetName().."AuraBars", self)
+		local R, G, B = unpack(T.Colors.class[T.MyClass])
+
+		AuraBars:SetHeight(10)
+		AuraBars:SetWidth(250)
+		AuraBars:SetPoint("TOPLEFT", self, "BOTTOMLEFT", 0, -60)
+		AuraBars.auraBarTexture = HealthTexture
+		AuraBars.PostCreateBar = function(element, bar)
+			UnitFrames.PostCreateAuraBar(element, bar)
+
+			bar:SetStatusBarColor(R, G, B)
+		end
+		AuraBars.friendlyAuraType = "HARMFUL"
+		AuraBars.onlyShowPlayer = true
+		AuraBars.growth = "DOWN"
+		AuraBars.gap = 2
+		AuraBars.width = 231
+		AuraBars.height = 17
+		AuraBars.spellNameObject = Font
+		AuraBars.spellTimeObject = Font
+
+		Movers:RegisterFrame(AuraBars, "Target Aura Bars")
+
+		self.AuraBars = AuraBars
 	end
 
 	if (C.UnitFrames.CombatLog) then

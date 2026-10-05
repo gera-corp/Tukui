@@ -120,25 +120,42 @@ local function UpdateColor(self, event, unit)
 	if(not unit or self.unit ~= unit) then return end
 	local element = self.Health
 
+	-- Tukui (Forever client): most of these unit queries can return secret values, which
+	-- can't be tested or used as table keys. Treat a secret answer as "unknown" and fall
+	-- through to the next coloring method instead of erroring.
+	local function scrub(value, default)
+		if issecretvalue and issecretvalue(value) then
+			return default
+		end
+
+		return value
+	end
+
+	local isConnected = scrub(UnitIsConnected(unit), true)
+	local isControlled = scrub(UnitPlayerControlled(unit), true)
+	local isPlayer = scrub(UnitIsPlayer(unit), false)
+	local _, class = UnitClass(unit)
+	class = scrub(class, nil)
+
 	local r, g, b, color
-	if(element.colorDisconnected and not UnitIsConnected(unit)) then
+	if(element.colorDisconnected and not isConnected) then
 		color = self.colors.disconnected
-	elseif(element.colorTapping and not UnitPlayerControlled(unit) and UnitIsTapDenied(unit)) then
+	elseif(element.colorTapping and not isControlled and scrub(UnitIsTapDenied(unit), false)) then
 		color = self.colors.tapped
-	elseif(element.colorThreat and not UnitPlayerControlled(unit) and UnitThreatSituation('player', unit)) then
+	elseif(element.colorThreat and not isControlled and scrub(UnitThreatSituation('player', unit), nil)) then
 		color =  self.colors.threat[UnitThreatSituation('player', unit)]
-	elseif(element.colorClass and UnitIsPlayer(unit))
-		or (element.colorClassNPC and not UnitIsPlayer(unit))
-		or (element.colorClassPet and UnitPlayerControlled(unit) and not UnitIsPlayer(unit)) then
-		local _, class = UnitClass(unit)
+	elseif(class and ((element.colorClass and isPlayer)
+		or (element.colorClassNPC and not isPlayer)
+		or (element.colorClassPet and isControlled and not isPlayer))) then
 		color = self.colors.class[class]
-	elseif(element.colorSelection and unitSelectionType(unit, element.considerSelectionInCombatHostile)) then
+	elseif(element.colorSelection and scrub(unitSelectionType(unit, element.considerSelectionInCombatHostile), nil)) then
 		color = self.colors.selection[unitSelectionType(unit, element.considerSelectionInCombatHostile)]
-	elseif(element.colorReaction and UnitReaction(unit, 'player')) then
+	elseif(element.colorReaction and scrub(UnitReaction(unit, 'player'), nil)) then
 		color = self.colors.reaction[UnitReaction(unit, 'player')]
-	elseif(element.colorSmooth) then
+	elseif(element.colorSmooth and not (issecretvalue and (issecretvalue(element.cur) or issecretvalue(element.max)))) then
 		r, g, b = self:ColorGradient(element.cur or 1, element.max or 1, unpack(element.smoothGradient or self.colors.smooth))
-	elseif(element.colorHealth) then
+	elseif(element.colorHealth or element.colorSmooth or element.colorClass or element.colorReaction) then
+		-- nothing usable was readable: plain health color rather than a stale one
 		color = self.colors.health
 	end
 

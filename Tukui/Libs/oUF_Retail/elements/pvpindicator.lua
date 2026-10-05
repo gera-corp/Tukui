@@ -35,6 +35,16 @@ The `Badge` sub-widget has to be on a lower sub-layer than the `PvP` texture.
 local _, ns = ...
 local oUF = ns.oUF
 
+-- Tukui (Forever client): group/unit flags can be secret values, which can't be tested.
+-- Like upstream oUF, treat a secret value as "not set" (default).
+local function scrub(value, default)
+	if issecretvalue and issecretvalue(value) then
+		return default
+	end
+
+	return value
+end
+
 local function Update(self, event, unit)
 	if(unit and unit ~= self.unit) then return end
 
@@ -52,13 +62,14 @@ local function Update(self, event, unit)
 	end
 
 	local status
-	local factionGroup = UnitFactionGroup(unit) or 'Neutral'
-	local honorRewardInfo = C_PvP.GetHonorRewardInfo(UnitHonorLevel(unit))
+	local factionGroup = scrub(UnitFactionGroup(unit), nil) or 'Neutral'
+	local honorLevel = scrub(UnitHonorLevel(unit), nil)
+	local honorRewardInfo = honorLevel and C_PvP.GetHonorRewardInfo(honorLevel)
 
-	if(UnitIsPVPFreeForAll(unit)) then
+	if(scrub(UnitIsPVPFreeForAll(unit), false)) then
 		status = 'FFA'
-	elseif(factionGroup ~= 'Neutral' and UnitIsPVP(unit)) then
-		if(unit == 'player' and UnitIsMercenary(unit)) then
+	elseif(factionGroup ~= 'Neutral' and scrub(UnitIsPVP(unit), false)) then
+		if(unit == 'player' and scrub(UnitIsMercenary(unit), false)) then
 			if(factionGroup == 'Horde') then
 				factionGroup = 'Alliance'
 			elseif(factionGroup == 'Alliance') then

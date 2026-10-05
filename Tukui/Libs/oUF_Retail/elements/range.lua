@@ -45,7 +45,14 @@ local function Update(self, event)
 	local connected = UnitIsConnected(unit)
 	if(connected) then
 		inRange, checkedRange = UnitInRange(unit)
-		if(checkedRange and not inRange) then
+
+		-- Forever (12.0+): UnitInRange returns secret booleans in combat, and
+		-- `checkedRange and not inRange` throws a boolean-test on a secret.
+		-- SetAlphaFromBoolean handles the secret condition at C++ level
+		-- (reference: ElvUI's oUF range element).
+		if(self.SetAlphaFromBoolean) then
+			self:SetAlphaFromBoolean(inRange, element.insideAlpha, element.outsideAlpha)
+		elseif(checkedRange and not inRange) then
 			self:SetAlpha(element.outsideAlpha)
 		else
 			self:SetAlpha(element.insideAlpha)

@@ -6,9 +6,20 @@ local Cache = {
 	-- Cache for NPCs
 }
 
+-- Unit GUIDs (and tooltip text) can be secret on this client
+local IsSecret = function(Value)
+	return issecretvalue and issecretvalue(Value)
+end
+
 local DisplayQuestIcon = function(self)
 	local QuestIcon = self.QuestIcon
 	local GUID = UnitGUID(self.unit) or ""
+
+	if IsSecret(GUID) then
+		QuestIcon:Hide()
+
+		return
+	end
 	local ID = tonumber(strmatch(GUID, "%-(%d-)%-%x-$"), 10)
 
 	if Cache[ID] == "QUEST" then
@@ -27,9 +38,17 @@ local Scan = function(self, unit)
 
 	if QuestIcon then
 		local GUID = UnitGUID(unit) or ""
-		local ID = tonumber(strmatch(GUID, "%-(%d-)%-%x-$"), 10)
 
-		if not Cache[ID] then
+		if IsSecret(GUID) then
+			return
+		end
+			local ID = tonumber(strmatch(GUID, "%-(%d-)%-%x-$"), 10)
+
+			if not ID then
+				return
+			end
+
+			if not Cache[ID] then
 			ScanTooltip:ClearLines()
 			ScanTooltip:SetOwner(WorldFrame, "ANCHOR_NONE")
 			ScanTooltip:SetUnit(unit)
@@ -75,8 +94,31 @@ local Update = function(self, event, arg)
 			Cache = {}
 		end
 
-		Scan(self, Unit)
-		DisplayQuestIcon(self)
+		-- Blizzard's own check (this client), no GUID or tooltip scanning needed
+		local IsRelated = C_QuestLog and C_QuestLog.UnitIsRelatedToActiveQuest
+		local ok, Related = false, nil
+
+		if IsRelated and Unit then
+			ok, Related = pcall(IsRelated, Unit)
+		end
+
+		if ok then
+			if IsSecret(Related) then
+				-- can't test a secret boolean: let the texture's alpha follow it
+				if QuestIcon.SetAlphaFromBoolean then
+					QuestIcon:SetAlphaFromBoolean(Related, 1, 0)
+					QuestIcon:Show()
+				else
+					QuestIcon:Hide()
+				end
+			else
+				QuestIcon:SetAlpha(1)
+				QuestIcon:SetShown(Related and true or false)
+			end
+		else
+			Scan(self, Unit)
+			DisplayQuestIcon(self)
+		end
 
 		if(QuestIcon.PostUpdate) then
 			return QuestIcon:PostUpdate()

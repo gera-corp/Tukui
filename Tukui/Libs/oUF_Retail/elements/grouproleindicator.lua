@@ -25,6 +25,16 @@ A default texture will be applied if the widget is a Texture and doesn't have a 
 local _, ns = ...
 local oUF = ns.oUF
 
+-- Tukui (Forever client): group/unit flags can be secret values, which can't be tested.
+-- Like upstream oUF, treat a secret value as "not set" (default).
+local function scrub(value, default)
+	if issecretvalue and issecretvalue(value) then
+		return default
+	end
+
+	return value
+end
+
 -- originally sourced from Blizzard_Deprecated/Deprecated_10_1_5.lua
 local function GetTexCoordsForRoleSmallCircle(role)
 	if(role == 'TANK') then
@@ -48,7 +58,7 @@ local function Update(self, event)
 		element:PreUpdate()
 	end
 
-	local role = UnitGroupRolesAssigned(self.unit)
+	local role = scrub(UnitGroupRolesAssigned(self.unit), nil)
 	if(role == 'TANK' or role == 'HEALER' or role == 'DAMAGER') then
 		element:SetTexCoord(GetTexCoordsForRoleSmallCircle(role))
 		element:Show()

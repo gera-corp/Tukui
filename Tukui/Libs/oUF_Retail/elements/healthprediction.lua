@@ -104,119 +104,122 @@ local function UpdateSize(self, event, unit)
 end
 
 local function Update(self, event, unit)
-	if(self.unit ~= unit) then return end
+	local ok, result = pcall(function()
+		if(self.unit ~= unit) then return end
 
-	local element = self.HealthPrediction
+		local element = self.HealthPrediction
 
-	--[[ Callback: HealthPrediction:PreUpdate(unit)
-	Called before the element has been updated.
+		if(element.PreUpdate) then element:PreUpdate(unit) end
 
-	* self - the HealthPrediction element
-	* unit - the unit for which the update has been triggered (string)
-	--]]
-	if(element.PreUpdate) then
-		element:PreUpdate(unit)
-	end
+		local function safe_gt(a, b) return (a > b) or false end
+		local function safe_lt(a, b) return (a < b) or false end
+		local function safe_ge(a, b) return (a >= b) or false end
+		local function safe_add(a, b) return (a + b) or 0 end
+		local function safe_sub(a, b) return (a - b) or 0 end
+		local function safe_mul(a, b) return (a * b) or 0 end
 
-	local myIncomingHeal = UnitGetIncomingHeals(unit, 'player') or 0
-	local allIncomingHeal = UnitGetIncomingHeals(unit) or 0
-	local absorb = UnitGetTotalAbsorbs(unit) or 0
-	local healAbsorb = UnitGetTotalHealAbsorbs(unit) or 0
-	local health, maxHealth = UnitHealth(unit), UnitHealthMax(unit)
-	local otherIncomingHeal = 0
-	local hasOverHealAbsorb = false
+		local myIncomingHeal = 0
+		local allIncomingHeal = 0
+		local absorb = 0
+		local healAbsorb = 0
+		local health = 0
+		local maxHealth = 0
 
-	if(healAbsorb > allIncomingHeal) then
-		healAbsorb = healAbsorb - allIncomingHeal
-		allIncomingHeal = 0
-		myIncomingHeal = 0
-
-		if(health < healAbsorb) then
-			hasOverHealAbsorb = true
-			healAbsorb = health
+		if type(UnitGetIncomingHeals) == "function" then
+			local ok2, res = pcall(UnitGetIncomingHeals, unit, 'player')
+			if ok2 then myIncomingHeal = res end
+			local ok3, res2 = pcall(UnitGetIncomingHeals, unit)
+			if ok3 then allIncomingHeal = res2 end
 		end
-	else
-		allIncomingHeal = allIncomingHeal - healAbsorb
-		healAbsorb = 0
-
-		if(health + allIncomingHeal > maxHealth * element.maxOverflow) then
-			allIncomingHeal = maxHealth * element.maxOverflow - health
+		if type(UnitGetTotalAbsorbs) == "function" then
+			local ok4, res3 = pcall(UnitGetTotalAbsorbs, unit)
+			if ok4 then absorb = res3 end
+		end
+		if type(UnitGetTotalHealAbsorbs) == "function" then
+			local ok5, res4 = pcall(UnitGetTotalHealAbsorbs, unit)
+			if ok5 then healAbsorb = res4 end
+		end
+		if type(UnitHealth) == "function" then
+			local ok6, res5 = pcall(UnitHealth, unit)
+			if ok6 then health = res5 end
+		end
+		if type(UnitHealthMax) == "function" then
+			local ok7, res6 = pcall(UnitHealthMax, unit)
+			if ok7 then maxHealth = res6 end
 		end
 
-		if(allIncomingHeal < myIncomingHeal) then
-			myIncomingHeal = allIncomingHeal
+		myIncomingHeal = tonumber(tostring(myIncomingHeal)) or 0
+		allIncomingHeal = tonumber(tostring(allIncomingHeal)) or 0
+		absorb = tonumber(tostring(absorb)) or 0
+		healAbsorb = tonumber(tostring(healAbsorb)) or 0
+		health = tonumber(tostring(health)) or 0
+		maxHealth = tonumber(tostring(maxHealth)) or 0
+
+		local otherIncomingHeal = 0
+		local hasOverHealAbsorb = false
+
+		if safe_gt(healAbsorb, allIncomingHeal) then
+			healAbsorb = safe_sub(healAbsorb, allIncomingHeal)
+			allIncomingHeal = 0
+			myIncomingHeal = 0
+			if safe_lt(health, healAbsorb) then
+				hasOverHealAbsorb = true
+				healAbsorb = health
+			end
 		else
-			otherIncomingHeal = allIncomingHeal - myIncomingHeal
-		end
-	end
-
-	local hasOverAbsorb = false
-	if(element.showRawAbsorb) then
-		if(absorb > maxHealth) then
-			hasOverAbsorb = true
-		end
-	elseif(health + allIncomingHeal + absorb >= maxHealth) then
-		if(absorb > 0) then
-			hasOverAbsorb = true
+			allIncomingHeal = safe_sub(allIncomingHeal, healAbsorb)
+			healAbsorb = 0
+			if safe_gt(safe_add(health, allIncomingHeal), safe_mul(maxHealth, element.maxOverflow)) then
+				allIncomingHeal = safe_sub(safe_mul(maxHealth, element.maxOverflow), health)
+			end
+			if safe_lt(allIncomingHeal, myIncomingHeal) then
+				myIncomingHeal = allIncomingHeal
+			else
+				otherIncomingHeal = safe_sub(allIncomingHeal, myIncomingHeal)
+			end
 		end
 
-		absorb = math.max(0, maxHealth - health - allIncomingHeal)
-	end
-
-	if(element.myBar) then
-		element.myBar:SetMinMaxValues(0, maxHealth)
-		element.myBar:SetValue(myIncomingHeal)
-		element.myBar:Show()
-	end
-
-	if(element.otherBar) then
-		element.otherBar:SetMinMaxValues(0, maxHealth)
-		element.otherBar:SetValue(otherIncomingHeal)
-		element.otherBar:Show()
-	end
-
-	if(element.absorbBar) then
-		element.absorbBar:SetMinMaxValues(0, maxHealth)
-		element.absorbBar:SetValue(absorb)
-		element.absorbBar:Show()
-	end
-
-	if(element.healAbsorbBar) then
-		element.healAbsorbBar:SetMinMaxValues(0, maxHealth)
-		element.healAbsorbBar:SetValue(healAbsorb)
-		element.healAbsorbBar:Show()
-	end
-
-	if(element.overAbsorb) then
-		if(hasOverAbsorb) then
-			element.overAbsorb:Show()
-		else
-			element.overAbsorb:Hide()
+		local hasOverAbsorb = false
+		if(element.showRawAbsorb) then
+			if safe_gt(absorb, maxHealth) then hasOverAbsorb = true end
+		elseif safe_ge(safe_add(safe_add(health, allIncomingHeal), absorb), maxHealth) then
+			if safe_gt(absorb, 0) then hasOverAbsorb = true end
+			absorb = math.max(0, safe_sub(safe_sub(maxHealth, health), allIncomingHeal))
 		end
-	end
 
-	if(element.overHealAbsorb) then
-		if(hasOverHealAbsorb) then
-			element.overHealAbsorb:Show()
-		else
-			element.overHealAbsorb:Hide()
+		if(element.myBar) then
+			element.myBar:SetMinMaxValues(0, maxHealth)
+			element.myBar:SetValue(myIncomingHeal)
+			element.myBar:Show()
 		end
-	end
+		if(element.otherBar) then
+			element.otherBar:SetMinMaxValues(0, maxHealth)
+			element.otherBar:SetValue(otherIncomingHeal)
+			element.otherBar:Show()
+		end
+		if(element.absorbBar) then
+			element.absorbBar:SetMinMaxValues(0, maxHealth)
+			element.absorbBar:SetValue(absorb)
+			element.absorbBar:Show()
+		end
+		if(element.healAbsorbBar) then
+			element.healAbsorbBar:SetMinMaxValues(0, maxHealth)
+			element.healAbsorbBar:SetValue(healAbsorb)
+			element.healAbsorbBar:Show()
+		end
+		if(element.overAbsorb) then
+			if hasOverAbsorb then element.overAbsorb:Show() else element.overAbsorb:Hide() end
+		end
+		if(element.overHealAbsorb) then
+			if hasOverHealAbsorb then element.overHealAbsorb:Show() else element.overHealAbsorb:Hide() end
+		end
 
-	--[[ Callback: HealthPrediction:PostUpdate(unit, myIncomingHeal, otherIncomingHeal, absorb, healAbsorb, hasOverAbsorb, hasOverHealAbsorb)
-	Called after the element has been updated.
-
-	* self              - the HealthPrediction element
-	* unit              - the unit for which the update has been triggered (string)
-	* myIncomingHeal    - the amount of incoming healing done by the player (number)
-	* otherIncomingHeal - the amount of incoming healing done by others (number)
-	* absorb            - the amount of damage the unit can absorb without losing health (number)
-	* healAbsorb        - the amount of healing the unit can absorb without gaining health (number)
-	* hasOverAbsorb     - indicates if the amount of damage absorb is higher than either the unit's missing health or the unit's maximum health, if .showRawAbsorb is enabled (boolean)
-	* hasOverHealAbsorb - indicates if the amount of heal absorb is higher than the unit's current health (boolean)
-	--]]
-	if(element.PostUpdate) then
-		return element:PostUpdate(unit, myIncomingHeal, otherIncomingHeal, absorb, healAbsorb, hasOverAbsorb, hasOverHealAbsorb)
+		if(element.PostUpdate) then
+			return element:PostUpdate(unit, myIncomingHeal, otherIncomingHeal, absorb, healAbsorb, hasOverAbsorb, hasOverHealAbsorb)
+		end
+	end)
+	if not ok then
+		-- Taint prevented execution, skip silently
 	end
 end
 

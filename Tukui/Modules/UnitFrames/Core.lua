@@ -66,24 +66,48 @@ function UnitFrames:DisableBlizzard()
 	end
 end
 
-function UnitFrames:ShortValue()
-	if self <= 999 then
-		return self
+function UnitFrames.ShortValue(self)
+	if issecretvalue and issecretvalue(self) then
+		-- Forever anti-cheat marks health/power as "secret": Lua cannot read it
+		-- via tonumber/format (taint), but C_StringUtil.WrapString can render it
+		-- safely (same approach ElvUI oUF uses). Use truthiness, not comparison:
+		-- any comparison (== / ~=) on a secret value is itself a taint operation.
+		local ok, s = pcall(function()
+			return C_StringUtil and C_StringUtil.WrapString and C_StringUtil.WrapString(self, "", "")
+		end)
+		if ok and s then
+			return s
+		end
+		return "?"
 	end
-
-	local Value
-
-	if self >= 1000000 then
-		Value = format("%.1fm", self / 1000000)
-		return Value
-	elseif self >= 1000 then
-		Value = format("%.1fk", self / 1000)
-		return Value
+	local ok, result = pcall(function()
+		local value = tonumber(self)
+		if value == nil then
+			return tostring(self)
+		end
+		if value <= 999 then
+			return value
+		end
+		if value >= 1000000 then
+			return format("%.1fm", value / 1000000)
+		elseif value >= 1000 then
+			return format("%.1fk", value / 1000)
+		end
+		return value
+	end)
+	if ok then
+		return result
 	end
+	return "?"
 end
 
 function UnitFrames:UTF8Sub(i, dots)
 	if not self then return end
+
+	-- Unit names can be secret on this client: they can be displayed but not measured or cut
+	if issecretvalue and issecretvalue(self) then
+		return self
+	end
 
 	local Bytes = self:len()
 	if (Bytes <= i) then
@@ -222,16 +246,27 @@ function UnitFrames:UpdateDebuffsHeaderPosition()
 	end
 end
 
-function UnitFrames:CustomCastTimeText(duration)
-	local Value = format("%.1f / %.1f", self.channeling and duration or self.max - duration, self.max)
-
-	self.Time:SetText(Value)
+function UnitFrames:CustomCastTimeText(duration, durationObject)
+	-- Forever: `duration` may be a secret DurationSeconds value (or the raw
+	-- number may be secret); Lua arithmetic/format on it taints. Use the
+	-- duration object's secret-safe accessors and C++ SetFormattedText.
+	if durationObject then
+		local remain = durationObject:GetRemainingDuration()
+		local maximum = durationObject:GetTotalDuration()
+		self.Time:SetFormattedText('%.1f / %.1f', remain, maximum)
+	else
+		self.Time:SetFormattedText('%.1f / %.1f', self.channeling and duration or self.max - duration, self.max)
+	end
 end
 
-function UnitFrames:CustomCastDelayText(duration)
-	local Value = format("%.1f |cffaf5050%s %.1f|r", self.channeling and duration or self.max - duration, self.channeling and "- " or "+", self.delay)
-
-	self.Time:SetText(Value)
+function UnitFrames:CustomCastDelayText(duration, durationObject)
+	if durationObject then
+		local remain = durationObject:GetRemainingDuration()
+		local maximum = durationObject:GetTotalDuration()
+		self.Time:SetFormattedText('%.1f / %.1f |cffaf5050%s %.1f|r', remain, maximum, self.channeling and '- ' or '+', self.delay)
+	else
+		self.Time:SetFormattedText('%.1f |cffaf5050%s %.1f|r', self.channeling and duration or self.max - duration, self.channeling and '- ' or '+', self.delay)
+	end
 end
 
 function UnitFrames:SetStatusCastBarColor(unit)
@@ -239,7 +274,9 @@ function UnitFrames:SetStatusCastBarColor(unit)
 		unit = "player"
 	end
 
-	if (self.notInterruptible) then
+	local notInterruptible = (not (issecretvalue and issecretvalue(self.notInterruptible))) and self.notInterruptible
+
+	if (notInterruptible) then
 		self:SetStatusBarColor(unpack(C.UnitFrames.NotInterruptibleColor))
 	elseif (self.casting) then
 		self:SetStatusBarColor(unpack(C.UnitFrames.CastingColor))
@@ -466,7 +503,30 @@ function UnitFrames:PostUpdateAura(unit, button, index, offset, filter, isDebuff
 				button.icon:SetDesaturated(true)
 				button.Backdrop:SetBorderColor(unpack(C["General"].BorderColor))
 			else
-				local color = DebuffTypeColor[DType] or DebuffTypeColor.none
+				-- Forever: DebuffTypeColor global no longer exists. Use the C-API
+				-- like ElvUI, falling back to the old table (if present) or a
+				-- neutral color so the border never errors on a nil.
+				local color
+				if C_UnitAuras and C_UnitAuras.GetAuraDispelTypeColor then
+					-- Forever signature: GetAuraDispelTypeColor(auraInstance[, curve])
+					-- where auraInstance is the aura DATA object (not the numeric ID,
+					-- and no unit token). Guard with pcall and fall back to the old
+					-- table / a neutral color on any signature mismatch.
+					local ok
+					ok, color = pcall(C_UnitAuras.GetAuraDispelTypeColor, data)
+					if not ok then
+						ok, color = pcall(C_UnitAuras.GetAuraDispelTypeColor, button.auraInstanceID)
+					end
+					if not ok then
+						color = nil
+					end
+				end
+				if not color and DebuffTypeColor then
+					color = DebuffTypeColor[DType] or DebuffTypeColor.none
+				end
+				if not color then
+					color = { r = 0.8, g = 0.8, b = 0.8 }
+				end
 				button.icon:SetDesaturated(false)
 				button.Backdrop:SetBorderColor(color.r * 0.8, color.g * 0.8, color.b * 0.8)
 			end
@@ -560,7 +620,24 @@ function UnitFrames:DisplayNameplatePowerAndCastBar(unit, cur, min, max)
 	local IsPowerHidden = PowerBar.IsHidden
 	local CastBar = Nameplate.Castbar
 
-	if (CurrentPower and CurrentPower == 0) and (MaxPower and MaxPower == 0) then
+	local function isZeroOrSecret(v)
+		-- In Forever, UnitPower can return secret values that cannot be
+		-- compared while tainted. Treat nil/secret as "no mana" so the power
+		-- bar hides for NPCs without a readable resource.
+		if v == nil then return true end
+		if issecretvalue and issecretvalue(v) then return true end
+		local ok, res = pcall(function() return v == 0 end)
+		return ok and res
+	end
+
+	local cp, mp
+	local ok = pcall(function()
+		cp = tonumber(CurrentPower)
+		mp = tonumber(MaxPower)
+	end)
+	if not ok then cp, mp = nil, nil end
+
+	if isZeroOrSecret(cp) and isZeroOrSecret(mp) then
 		if (not IsPowerHidden) then
 			Health:ClearAllPoints()
 			Health:SetAllPoints()
@@ -915,6 +992,69 @@ function UnitFrames:Style(unit)
 end
 
 -- Function below is based on https://github.com/trincasidra/trincaui/blob/main/unitframes/nameplate.lua
+-- Same logic as Blizzard's NamePlateDriverMixin:UpdateSoftTargetIconInternal, but drawing
+-- into Tukui's own icon on our nameplates (see Nameplates.lua)
+local SoftTargetTokens = {
+	softenemy = "SoftTargetIconEnemy",
+	softfriend = "SoftTargetIconFriend",
+	softinteract = "SoftTargetIconInteract",
+}
+
+function UnitFrames:UpdateSoftTargetIcons()
+	for _, Plate in pairs(C_NamePlate.GetNamePlates()) do
+		local Frame = Plate.unitFrame
+
+		if Frame and Frame.SoftTargetIcon then
+			Frame.SoftTargetIcon:Hide()
+		end
+	end
+
+	if (tonumber(GetCVar("SoftTargetNameplateSize")) or 0) <= 0 then
+		return
+	end
+
+	for Token, CVar in pairs(SoftTargetTokens) do
+		if GetCVarBool(CVar) then
+			local Plate = C_NamePlate.GetNamePlateForUnit(Token)
+			local Frame = Plate and Plate.unitFrame
+			local Icon = Frame and Frame.SoftTargetIcon
+
+			if Icon then
+				local ok, HasTexture = pcall(SetUnitCursorTexture, Icon, Token, nil, nil, true)
+
+				if ok and HasTexture then
+					Icon:Show()
+				end
+			end
+		end
+	end
+end
+
+function UnitFrames:EnableSoftTargetIcons()
+	local Updater = CreateFrame("Frame")
+
+	for _, Event in pairs({"PLAYER_SOFT_ENEMY_CHANGED", "PLAYER_SOFT_FRIEND_CHANGED", "PLAYER_SOFT_INTERACT_CHANGED", "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED", "CVAR_UPDATE"}) do
+		pcall(Updater.RegisterEvent, Updater, Event)
+	end
+
+	-- after oUF has set up the plate for NAME_PLATE_UNIT_ADDED
+	Updater:SetScript("OnEvent", function(_, Event, Unit)
+		C_Timer.After(0, function()
+			-- Blizzard may hand the plate its pooled unit frame after oUF hid the old one:
+			-- hide whatever Blizzard frame the plate has now
+			if Event == "NAME_PLATE_UNIT_ADDED" and Unit then
+				local Plate = C_NamePlate.GetNamePlateForUnit(Unit)
+
+				if Plate then
+					oUF:DisableNamePlate(Plate)
+				end
+			end
+
+			UnitFrames:UpdateSoftTargetIcons()
+		end)
+	end)
+end
+
 function UnitFrames:NameplateCallBack(event, unit)
 	if not T.Retail then
 		return
@@ -1114,6 +1254,10 @@ function UnitFrames:CreateUnits()
 		}
 
 		oUF:SpawnNamePlates("Tukui", UnitFrames.NameplateCallBack, UnitFrames.NameplatesVariables)
+
+		if T.Retail then
+			UnitFrames:EnableSoftTargetIcons()
+		end
 	end
 end
 
@@ -1168,7 +1312,8 @@ function UnitFrames:Enable()
 		nameplateMaxScale = 1,
 		nameplateMinScale = 1,
 		nameplateSelectedScale = C.NamePlates.SelectedScale / 100,
-		nameplateMaxDistance = T.Retail and 61 or 41
+		nameplateMaxDistance = T.Retail and 61 or 41,
+		showNamePlates = 0,
 	}
 
 	oUF:RegisterStyle("Tukui", UnitFrames.Style)

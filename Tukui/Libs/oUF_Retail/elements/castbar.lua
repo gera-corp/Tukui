@@ -99,6 +99,10 @@ local FAILED = _G.FAILED or 'Failed'
 local INTERRUPTED = _G.INTERRUPTED or 'Interrupted'
 local CASTBAR_STAGE_DURATION_INVALID = -1 -- defined in FrameXML/CastingBarFrame.lua
 
+-- Secret-safe timer API enums (Retail 12.0+); NOT globals, must alias from Enum.
+local StatusBarTimerDirection = Enum and Enum.StatusBarTimerDirection
+local StatusBarInterpolation = Enum and Enum.StatusBarInterpolation
+
 local function resetAttributes(self)
 	self.castID = nil
 	self.casting = nil
@@ -236,29 +240,55 @@ local function CastStart(self, event, unit)
 	element.channeling = event == 'UNIT_SPELLCAST_CHANNEL_START'
 	element.empowering = event == 'UNIT_SPELLCAST_EMPOWER_START'
 
-	if(element.empowering) then
-		endTime = endTime + GetUnitEmpowerHoldAtMaxTime(unit)
-	end
-
-	endTime = endTime / 1000
-	startTime = startTime / 1000
-
-	element.max = endTime - startTime
-	element.startTime = startTime
 	element.delay = 0
 	element.notInterruptible = notInterruptible
 	element.holdTime = 0
 	element.castID = castID
 	element.spellID = spellID
 
-	if(element.channeling) then
-		element.duration = endTime - GetTime()
-	else
-		element.duration = GetTime() - startTime
-	end
+	if(oUF.isRetail) then
+		-- New timer API (Retail): secret-safe. startTime/endTime may be secret on a
+		-- secret unit; skip manual arithmetic and drive the bar via SetTimerDuration.
+		if not (issecretvalue and (issecretvalue(startTime) or issecretvalue(endTime))) then
+			if(element.empowering) then
+				endTime = endTime + GetUnitEmpowerHoldAtMaxTime(unit)
+			end
 
-	element:SetMinMaxValues(0, element.max)
-	element:SetValue(element.duration)
+			endTime = endTime / 1000
+			startTime = startTime / 1000
+
+			element.max = endTime - startTime
+			element.startTime = startTime
+		else
+			element.startTime = nil
+			element.max = nil
+		end
+
+		local duration = element.empowering and UnitEmpoweredChannelDuration(unit) or (element.channeling and UnitChannelDuration(unit) or UnitCastingDuration(unit))
+		if(duration) then
+			local direction = element.channeling and StatusBarTimerDirection.RemainingTime or StatusBarTimerDirection.ElapsedTime
+			element:SetTimerDuration(duration, element.smoothing or StatusBarInterpolation.Immediate, direction)
+		end
+	else
+		if(element.empowering) then
+			endTime = endTime + GetUnitEmpowerHoldAtMaxTime(unit)
+		end
+
+		endTime = endTime / 1000
+		startTime = startTime / 1000
+
+		element.max = endTime - startTime
+		element.startTime = startTime
+
+		if(element.channeling) then
+			element.duration = endTime - GetTime()
+		else
+			element.duration = GetTime() - startTime
+		end
+
+		element:SetMinMaxValues(0, element.max)
+		element:SetValue(element.duration)
+	end
 
 	if(element.Icon) then element.Icon:SetTexture(texture or FALLBACK_ICON) end
 	if(element.Shield) then element.Shield:SetShown(notInterruptible) end
@@ -280,7 +310,7 @@ local function CastStart(self, event, unit)
 			safeZone:SetPoint(element:GetReverseFill() and (isHoriz and 'LEFT' or 'BOTTOM') or (isHoriz and 'RIGHT' or 'TOP'))
 		end
 
-		local ratio = (select(4, GetNetStats()) / 1000) / element.max
+		local ratio = element.max and ((select(4, GetNetStats()) / 1000) / element.max) or 0
 		if(ratio > 1) then
 			ratio = 1
 		end
@@ -317,8 +347,14 @@ local function CastUpdate(self, event, unit, castID, spellID)
 		return
 	end
 
-	if(not element:IsShown() or element.castID ~= castID or element.spellID ~= spellID) then
-		return
+	if(oUF.isRetail) then
+		-- Forever: castID/spellID are secret on a secret unit; comparison taints.
+		-- ElvUI drops the ID match on Retail and gates only on IsShown.
+		if(not element:IsShown()) then return end
+	else
+		if(not element:IsShown() or element.castID ~= castID or element.spellID ~= spellID) then
+			return
+		end
 	end
 
 	local name, startTime, endTime, _
@@ -330,34 +366,59 @@ local function CastUpdate(self, event, unit, castID, spellID)
 
 	if(not name) then return end
 
-	if(element.empowering) then
-		endTime = endTime + GetUnitEmpowerHoldAtMaxTime(unit)
-	end
+	if(oUF.isRetail) then
+		-- New timer API (Retail): secret-safe.
+		if not (issecretvalue and (issecretvalue(startTime) or issecretvalue(endTime))) then
+			if(element.empowering) then
+				endTime = (endTime + GetUnitEmpowerHoldAtMaxTime(unit)) / 1000
+			else
+				endTime = endTime / 1000
+			end
 
-	endTime = endTime / 1000
-	startTime = startTime / 1000
+			startTime = startTime / 1000
 
-	local delta
-	if(element.channeling) then
-		delta = element.startTime - startTime
+			element.max = endTime - startTime
+			element.startTime = startTime
+		else
+			element.startTime = nil
+			element.max = nil
+		end
 
-		element.duration = endTime - GetTime()
+		local duration = element.empowering and UnitEmpoweredChannelDuration(unit) or (element.channeling and UnitChannelDuration(unit) or UnitCastingDuration(unit))
+		if(duration) then
+			local direction = element.channeling and StatusBarTimerDirection.RemainingTime or StatusBarTimerDirection.ElapsedTime
+			element:SetTimerDuration(duration, element.smoothing or StatusBarInterpolation.Immediate, direction)
+		end
 	else
-		delta = startTime - element.startTime
+		if(element.empowering) then
+			endTime = endTime + GetUnitEmpowerHoldAtMaxTime(unit)
+		end
 
-		element.duration = GetTime() - startTime
+		endTime = endTime / 1000
+		startTime = startTime / 1000
+
+		local delta
+		if(element.channeling) then
+			delta = element.startTime - startTime
+
+			element.duration = endTime - GetTime()
+		else
+			delta = startTime - element.startTime
+
+			element.duration = GetTime() - startTime
+		end
+
+		if(delta < 0) then
+			delta = 0
+		end
+
+		element.max = endTime - startTime
+		element.startTime = startTime
+		element.delay = element.delay + delta
+
+		element:SetMinMaxValues(0, element.max)
+		element:SetValue(element.duration)
 	end
-
-	if(delta < 0) then
-		delta = 0
-	end
-
-	element.max = endTime - startTime
-	element.startTime = startTime
-	element.delay = element.delay + delta
-
-	element:SetMinMaxValues(0, element.max)
-	element:SetValue(element.duration)
 
 	--[[ Callback: Castbar:PostCastUpdate(unit)
 	Called after the element has been updated when a spell cast or channel has been updated.
@@ -376,8 +437,13 @@ local function CastStop(self, event, unit, castID, spellID)
 		return
 	end
 
-	if(not element:IsShown() or element.castID ~= castID or element.spellID ~= spellID) then
-		return
+	if(oUF.isRetail) then
+		-- Forever: castID/spellID are secret on a secret unit; comparison taints.
+		if(not element:IsShown()) then return end
+	else
+		if(not element:IsShown() or element.castID ~= castID or element.spellID ~= spellID) then
+			return
+		end
 	end
 
 	resetAttributes(element)
@@ -400,8 +466,13 @@ local function CastFail(self, event, unit, castID, spellID)
 		return
 	end
 
-	if(not element:IsShown() or element.castID ~= castID or element.spellID ~= spellID) then
-		return
+	if(oUF.isRetail) then
+		-- Forever: castID/spellID are secret on a secret unit; comparison taints.
+		if(not element:IsShown()) then return end
+	else
+		if(not element:IsShown() or element.castID ~= castID or element.spellID ~= spellID) then
+			return
+		end
 	end
 
 	if(element.Text) then
@@ -413,7 +484,7 @@ local function CastFail(self, event, unit, castID, spellID)
 	element.holdTime = element.timeToHold or 0
 
 	resetAttributes(element)
-	element:SetValue(element.max)
+	if(element.max) then element:SetValue(element.max) end
 
 	--[[ Callback: Castbar:PostCastFail(unit, spellID)
 	Called after the element has been updated upon a failed or interrupted spell cast.
@@ -453,48 +524,61 @@ end
 local function onUpdate(self, elapsed)
 	if(self.casting or self.channeling or self.empowering) then
 		local isCasting = self.casting or self.empowering
-		if(isCasting) then
-			self.duration = self.duration + elapsed
-			if(self.duration >= self.max) then
-				local spellID = self.spellID
+		local duration, durationObject
 
-				resetAttributes(self)
-				self:Hide()
-
-				if(self.PostCastStop) then
-					self:PostCastStop(self.__owner.unit, spellID)
-				end
-
-				return
+		if(oUF.isRetail) then
+			-- New timer API (Retail): read remaining duration from the timer object.
+			durationObject = self:GetTimerDuration()
+			if(durationObject) then
+				duration = durationObject:GetRemainingDuration()
+				self.duration = duration
 			end
 		else
-			self.duration = self.duration - elapsed
-			if(self.duration <= 0) then
-				local spellID = self.spellID
+			if(isCasting) then
+				self.duration = self.duration + elapsed
+				if(self.duration >= self.max) then
+					local spellID = self.spellID
 
-				resetAttributes(self)
-				self:Hide()
+					resetAttributes(self)
+					self:Hide()
 
-				if(self.PostCastStop) then
-					self:PostCastStop(self.__owner.unit, spellID)
+					if(self.PostCastStop) then
+						self:PostCastStop(self.__owner.unit, spellID)
+					end
+
+					return
 				end
+			else
+				self.duration = self.duration - elapsed
+				if(self.duration <= 0) then
+					local spellID = self.spellID
 
-				return
+					resetAttributes(self)
+					self:Hide()
+
+					if(self.PostCastStop) then
+						self:PostCastStop(self.__owner.unit, spellID)
+					end
+
+					return
+				end
 			end
+
+			duration = self.duration
 		end
 
 		if(self.Time) then
 			if(self.delay ~= 0) then
 				if(self.CustomDelayText) then
-					self:CustomDelayText(self.duration)
+					self:CustomDelayText(duration, durationObject)
 				else
-					self.Time:SetFormattedText('%.1f|cffff0000%s%.2f|r', self.duration, isCasting and '+' or '-', self.delay)
+					self.Time:SetFormattedText('%.1f|cffff0000%s%.2f|r', duration or 0, isCasting and '+' or '-', self.delay)
 				end
 			else
 				if(self.CustomTimeText) then
-					self:CustomTimeText(self.duration)
+					self:CustomTimeText(duration, durationObject)
 				else
-					self.Time:SetFormattedText('%.1f', self.duration)
+					self.Time:SetFormattedText('%.1f', duration or 0)
 				end
 			end
 		end
@@ -522,7 +606,9 @@ local function onUpdate(self, elapsed)
 			end
 		end
 
-		self:SetValue(self.duration)
+		if(not oUF.isRetail) then
+			self:SetValue(self.duration)
+		end
 	elseif(self.holdTime > 0) then
 		self.holdTime = self.holdTime - elapsed
 	else
@@ -544,6 +630,8 @@ local function Enable(self, unit)
 	if(element and unit and not unit:match('%wtarget$')) then
 		element.__owner = self
 		element.ForceUpdate = ForceUpdate
+
+		element.smoothing = StatusBarInterpolation and StatusBarInterpolation.Immediate or nil
 
 		self:RegisterEvent('UNIT_SPELLCAST_START', CastStart)
 		self:RegisterEvent('UNIT_SPELLCAST_CHANNEL_START', CastStart)

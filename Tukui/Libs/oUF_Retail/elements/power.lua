@@ -118,18 +118,37 @@ local function UpdateColor(self, event, unit)
 	if(self.unit ~= unit) then return end
 	local element = self.Power
 
+	-- Tukui (Forever client): unit queries (even the power type) can return secret values,
+	-- which can't be tested or used as table keys. Treat them as "unknown" and fall through.
+	local function scrub(value, default)
+		if issecretvalue and issecretvalue(value) then
+			return default
+		end
+
+		return value
+	end
+
 	local pType, pToken, altR, altG, altB = UnitPowerType(unit)
+	if issecretvalue and (issecretvalue(pType) or issecretvalue(pToken) or issecretvalue(altR)) then
+		pType, pToken, altR, altG, altB = nil, nil, nil, nil, nil
+	end
+
+	local isConnected = scrub(UnitIsConnected(unit), true)
+	local isControlled = scrub(UnitPlayerControlled(unit), true)
+	local isPlayer = scrub(UnitIsPlayer(unit), false)
+	local _, class = UnitClass(unit)
+	class = scrub(class, nil)
 
 	local r, g, b, color
-	if(element.colorDisconnected and not UnitIsConnected(unit)) then
+	if(element.colorDisconnected and not isConnected) then
 		color = self.colors.disconnected
-	elseif(element.colorTapping and not UnitPlayerControlled(unit) and UnitIsTapDenied(unit)) then
+	elseif(element.colorTapping and not isControlled and scrub(UnitIsTapDenied(unit), false)) then
 		color = self.colors.tapped
-	elseif(element.colorThreat and not UnitPlayerControlled(unit) and UnitThreatSituation('player', unit)) then
+	elseif(element.colorThreat and not isControlled and scrub(UnitThreatSituation('player', unit), nil)) then
 		color =  self.colors.threat[UnitThreatSituation('player', unit)]
 	elseif(element.colorPower) then
 		if(element.displayType ~= ALTERNATE_POWER_INDEX) then
-			color = self.colors.power[pToken]
+			color = pToken and self.colors.power[pToken]
 			if(not color) then
 				if(element.GetAlternativeColor) then
 					r, g, b = element:GetAlternativeColor(unit, pType, pToken, altR, altG, altB)
@@ -140,22 +159,21 @@ local function UpdateColor(self, event, unit)
 						r, g, b = r / 255, g / 255, b / 255
 					end
 				else
-					color = self.colors.power[pType] or self.colors.power.MANA
+					color = (pType and self.colors.power[pType]) or self.colors.power.MANA
 				end
 			end
 		else
 			color = self.colors.power[ALTERNATE_POWER_INDEX]
 		end
-	elseif(element.colorClass and UnitIsPlayer(unit))
-		or (element.colorClassNPC and not UnitIsPlayer(unit))
-		or (element.colorClassPet and UnitPlayerControlled(unit) and not UnitIsPlayer(unit)) then
-		local _, class = UnitClass(unit)
+	elseif(class and ((element.colorClass and isPlayer)
+		or (element.colorClassNPC and not isPlayer)
+		or (element.colorClassPet and isControlled and not isPlayer))) then
 		color = self.colors.class[class]
-	elseif(element.colorSelection and unitSelectionType(unit, element.considerSelectionInCombatHostile)) then
+	elseif(element.colorSelection and scrub(unitSelectionType(unit, element.considerSelectionInCombatHostile), nil)) then
 		color = self.colors.selection[unitSelectionType(unit, element.considerSelectionInCombatHostile)]
-	elseif(element.colorReaction and UnitReaction(unit, 'player')) then
+	elseif(element.colorReaction and scrub(UnitReaction(unit, 'player'), nil)) then
 		color = self.colors.reaction[UnitReaction(unit, 'player')]
-	elseif(element.colorSmooth) then
+	elseif(element.colorSmooth and not (issecretvalue and (issecretvalue(element.cur) or issecretvalue(element.max) or issecretvalue(element.min)))) then
 		local adjust = 0 - (element.min or 0)
 		r, g, b = self:ColorGradient((element.cur or 1) + adjust, (element.max or 1) + adjust, unpack(element.smoothGradient or self.colors.smooth))
 	end

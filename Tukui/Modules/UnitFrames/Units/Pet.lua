@@ -241,4 +241,98 @@ function UnitFrames:Pet()
 
 		UnitFrames.DisplayPlayerAndPetNames(self, "PLAYER_REGEN_ENABLED")
 	end
+
+	-- Hunter pet happiness icon (Classic realms). Tukui gated its happiness display on
+	-- T.Classic, but this client runs the Mainline code path while still having pet
+	-- happiness (as C_PetInfo.GetPetHappiness), so check for the API instead.
+	local GetPetHappiness = GetPetHappiness or (C_PetInfo and C_PetInfo.GetPetHappiness)
+
+	if T.MyClass == "HUNTER" and GetPetHappiness then
+		local Happiness = CreateFrame("Frame", nil, self)
+		Happiness:SetSize(22, 22)
+		Happiness:SetPoint("LEFT", self, "RIGHT", 6, 0)
+		Happiness:CreateBackdrop()
+		Happiness:CreateShadow()
+		Happiness:EnableMouse(true)
+		Happiness:Hide()
+
+		Happiness.Icon = Happiness:CreateTexture(nil, "ARTWORK")
+		Happiness.Icon:SetInside(Happiness)
+
+		-- same art as Blizzard's pet happiness indicator (Blizzard_FrameXML/PetHappiness.lua)
+		local Atlases = {
+			[1] = "UI-PetMad",
+			[2] = "UI-PetNeutral",
+			[3] = "UI-PetHappiness",
+		}
+
+		local function Update()
+			local State = GetPetHappiness()
+			local _, IsHunterPet = HasPetUI()
+
+			if not State or not Atlases[State] or not IsHunterPet then
+				Happiness:Hide()
+
+				return
+			end
+
+			Happiness.Icon:SetAtlas(Atlases[State])
+
+			local Color = T.Colors.happiness and T.Colors.happiness[State]
+			if Color then
+				Happiness.Backdrop:SetBorderColor(Color[1] or Color.r, Color[2] or Color.g, Color[3] or Color.b)
+			end
+
+			Happiness:Show()
+		end
+
+		Happiness:SetScript("OnEnter", function(Frame)
+			local State, DamagePercentage, LoyaltyRate = GetPetHappiness()
+
+			if not State then
+				return
+			end
+
+			GameTooltip:SetOwner(Frame, "ANCHOR_RIGHT")
+			GameTooltip:AddLine(_G["PET_HAPPINESS"..State] or ({"Unhappy", "Content", "Happy"})[State], 1, 1, 1)
+
+			if DamagePercentage then
+				GameTooltip:AddLine(format(PET_DAMAGE_PERCENTAGE or "Pet is doing %d%% damage", DamagePercentage), 1, 0.82, 0)
+			end
+
+			if LoyaltyRate and LoyaltyRate ~= 0 then
+				GameTooltip:AddLine(LoyaltyRate > 0 and (GAINING_LOYALTY or "Gaining loyalty") or (LOSING_LOYALTY or "Losing loyalty"), 1, 0.82, 0)
+			end
+
+			-- what the pet eats
+			local Diet = C_PetInfo and C_PetInfo.GetPetFoodTypes and C_PetInfo.GetPetFoodTypes()
+			if Diet and #Diet > 0 and PET_DIET_TEMPLATE then
+				GameTooltip:AddLine(PET_DIET_TEMPLATE:format(table.concat(Diet, PET_FOOD_DELIMIT or ", ")), 1, 0.82, 0)
+			end
+
+			GameTooltip:Show()
+		end)
+		Happiness:SetScript("OnLeave", GameTooltip_Hide)
+
+		-- events (the happiness event may not exist on this client, hence pcall) and a
+		-- once-per-second refresh as a fallback
+		for _, Event in pairs({"UNIT_HAPPINESS", "UNIT_PET", "PET_UI_UPDATE", "PLAYER_ENTERING_WORLD"}) do
+			pcall(Happiness.RegisterEvent, Happiness, Event)
+		end
+
+		Happiness:SetScript("OnEvent", Update)
+
+		local Elapsed = 0
+		local Ticker = CreateFrame("Frame", nil, self)
+		Ticker:SetScript("OnUpdate", function(_, Delta)
+			Elapsed = Elapsed + Delta
+
+			if Elapsed >= 1 then
+				Elapsed = 0
+				Update()
+			end
+		end)
+
+		self.HappinessIcon = Happiness
+	end
 end

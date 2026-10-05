@@ -1,6 +1,6 @@
 local parent, ns = ...
 local global = C_AddOns.GetAddOnMetadata(parent, 'X-oUF')
-local _VERSION = '@project-version@'
+local _VERSION = 'v20.463'
 if(_VERSION:find('project%-version')) then
 	_VERSION = 'devel'
 end
@@ -767,7 +767,11 @@ function oUF:SpawnNamePlates(namePrefix, nameplateCallback, nameplateCVars)
 	-- and because forbidden nameplates exist, we have to allow default nameplate
 	-- driver to create, update, and remove Blizz nameplates.
 	-- Disable only not forbidden nameplates.
-	hooksecurefunc(NamePlateDriverFrame, 'AcquireUnitFrame', self.DisableNamePlate)
+	-- (Tukui: no hooksecurefunc on NamePlateDriverFrame.AcquireUnitFrame. On this client a hook
+	-- on a Blizzard object's method breaks when Blizzard calls it from secure event dispatch:
+	-- "attempt to call a nil value" in NamePlateBaseMixin:AcquireUnitFrame. It was useless anyway,
+	-- the unit frame isn't assigned yet when it runs; DisableNamePlate is called explicitly on
+	-- NAME_PLATE_UNIT_ADDED below.)
 
 	local eventHandler = CreateFrame('Frame', 'oUF_NamePlateDriver')
 	eventHandler:RegisterEvent('NAME_PLATE_UNIT_ADDED')
@@ -806,14 +810,20 @@ function oUF:SpawnNamePlates(namePrefix, nameplateCallback, nameplateCVars)
 			local nameplate = C_NamePlate.GetNamePlateForUnit(unit)
 			if(not nameplate) then return end
 
+			-- Скрываем Blizzard nameplate (чёрная полоска с уровнем).
+			-- hooksecurefunc(NamePlateDriverFrame, 'AcquireUnitFrame') может
+			-- не срабатывать в Forever, поэтому вызываем явно.
+			self:DisableNamePlate(nameplate)
+
 			if(not nameplate.unitFrame) then
-				nameplate.style = style
+							nameplate.style = style
 
-				nameplate.unitFrame = CreateFrame('Button', prefix..nameplate:GetName(), nameplate, 'PingableUnitFrameTemplate')
-				nameplate.unitFrame:EnableMouse(false)
-				nameplate.unitFrame.isNamePlate = true
+							nameplate.unitFrame = CreateFrame('Button', prefix..nameplate:GetName(), nameplate, 'PingableUnitFrameTemplate')
+							nameplate.unitFrame:EnableMouse(false)
+							nameplate.unitFrame:SetAllPoints()
+							nameplate.unitFrame.isNamePlate = true
 
-				Private.UpdateUnits(nameplate.unitFrame, unit)
+							Private.UpdateUnits(nameplate.unitFrame, unit)
 
 				walkObject(nameplate.unitFrame, unit)
 			else
@@ -828,10 +838,10 @@ function oUF:SpawnNamePlates(namePrefix, nameplateCallback, nameplateCVars)
 					nameplate.unitFrame.WidgetContainer = nameplate.UnitFrame.WidgetContainer
 				end
 
-				if(nameplate.UnitFrame.SoftTargetFrame) then
-					nameplate.UnitFrame.SoftTargetFrame:SetParent(nameplate.unitFrame)
-					nameplate.unitFrame.SoftTargetFrame = nameplate.UnitFrame.SoftTargetFrame
-				end
+				-- (Tukui: Blizzard's SoftTargetFrame is not moved here anymore. On this client
+				-- Blizzard re-acquires its unit frame per nameplate, so the moved icon was often a
+				-- stale one still anchored to the hidden Blizzard frame. Tukui draws its own
+				-- soft-target icon instead, see UnitFrames:UpdateSoftTargetIcons.)
 			end
 
 			if(nameplateCallback) then

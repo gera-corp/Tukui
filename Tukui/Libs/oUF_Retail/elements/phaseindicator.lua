@@ -36,6 +36,16 @@ OnEnter and/or OnLeave handlers.
 local _, ns = ...
 local oUF = ns.oUF
 
+-- Tukui (Forever client): group/unit flags can be secret values, which can't be tested.
+-- Like upstream oUF, treat a secret value as "not set" (default).
+local function scrub(value, default)
+	if issecretvalue and issecretvalue(value) then
+		return default
+	end
+
+	return value
+end
+
 --[[ Override: PhaseIndicator:UpdateTooltip()
 Used to populate the tooltip when the widget is hovered.
 
@@ -78,7 +88,7 @@ local function Update(self, event, unit)
 
 	-- BUG: UnitPhaseReason returns wrong data for friendly NPCs in phased scenarios like WM or Chromie Time
 	-- https://github.com/Stanzilla/WoWUIBugs/issues/49
-	local phaseReason = UnitIsPlayer(unit) and UnitIsConnected(unit) and UnitPhaseReason(unit) or nil
+	local phaseReason = scrub(UnitIsPlayer(unit), false) and scrub(UnitIsConnected(unit), false) and scrub(UnitPhaseReason(unit), nil) or nil
 	if(phaseReason) then
 		element:Show()
 	else

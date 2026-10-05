@@ -7,10 +7,19 @@ local CHAT_FLAG_AFK = CHAT_FLAG_AFK
 
 UnitFrames.ShortNameLength = 10
 
+-- Unit info can be secret on this client (can't be tested): treat it as "not set"
+local function Scrub(Value, Default)
+	if issecretvalue and issecretvalue(Value) then
+		return Default
+	end
+
+	return Value
+end
+
 if T.Retail then
 	oUF.Tags.Events["Tukui:GetRaidNameColor"] = "RAID_ROSTER_UPDATE GROUP_ROSTER_UPDATE"
 	oUF.Tags.Methods["Tukui:GetRaidNameColor"] = function(unit)
-		local Role = UnitGroupRolesAssigned(unit)
+		local Role = Scrub(UnitGroupRolesAssigned(unit), nil)
 		local R, G, B
 
 		if Role == "TANK" then
@@ -26,7 +35,7 @@ if T.Retail then
 
 	oUF.Tags.Events["Tukui:Role"] = "PLAYER_ROLES_ASSIGNED GROUP_ROSTER_UPDATE"
 	oUF.Tags.Methods["Tukui:Role"] = function(unit)
-		local Role = UnitGroupRolesAssigned(unit)
+		local Role = Scrub(UnitGroupRolesAssigned(unit), nil)
 		local String = ""
 
 		if Role == "TANK" then
@@ -41,9 +50,9 @@ end
 
 oUF.Tags.Events["Tukui:GetNameColor"] = "UNIT_POWER_UPDATE"
 oUF.Tags.Methods["Tukui:GetNameColor"] = function(unit)
-	local Reaction = UnitReaction(unit, "player")
+	local Reaction = Scrub(UnitReaction(unit, "player"), nil)
 
-	if (UnitIsPlayer(unit)) then
+	if (Scrub(UnitIsPlayer(unit), false)) then
 		return _TAGS["raidcolor"](unit)
 	elseif (Reaction) then
 		local c = T.Colors.reaction[Reaction]
@@ -56,7 +65,7 @@ end
 
 oUF.Tags.Events["Tukui:GetNameHostilityColor"] = "UNIT_POWER_UPDATE"
 oUF.Tags.Methods["Tukui:GetNameHostilityColor"] = function(unit)
-	local Reaction = UnitReaction(unit, "player")
+	local Reaction = Scrub(UnitReaction(unit, "player"), nil)
 
 	if (Reaction) then
 		local c = T.Colors.reaction[Reaction]
@@ -69,7 +78,7 @@ end
 
 oUF.Tags.Events["Tukui:DiffColor"] = "UNIT_LEVEL PLAYER_LEVEL_UP"
 oUF.Tags.Methods["Tukui:DiffColor"] = function(unit)
-	local Level = UnitLevel(unit)
+	local Level = Scrub(UnitLevel(unit), nil)
 	local Color = Level and GetQuestDifficultyColor(Level) or {r = 1, g = 1, b = 1}
 
 	return string.format("|cff%02x%02x%02x", Color.r * 255, Color.g * 255, Color.b * 255)
@@ -78,6 +87,16 @@ end
 oUF.Tags.Events["Tukui:NameShort"] = "UNIT_NAME_UPDATE PARTY_LEADER_CHANGED GROUP_ROSTER_UPDATE"
 oUF.Tags.Methods["Tukui:NameShort"] = function(unit)
 	local Name = UnitName(unit) or "???"
+
+	-- secret name or leader/assist flags (this client): show the plain name, no [L]/[A]
+	if issecretvalue then
+		local IsLeader, IsAssistant, IsOfficer = UnitIsGroupLeader(unit), UnitIsGroupAssistant(unit), UnitIsRaidOfficer(unit)
+
+		if issecretvalue(Name) or issecretvalue(IsLeader) or issecretvalue(IsAssistant) or issecretvalue(IsOfficer) then
+			return Name
+		end
+	end
+
 	local IsLeader = UnitIsGroupLeader(unit)
 	local IsAssistant = UnitIsGroupAssistant(unit) or UnitIsRaidOfficer(unit)
 	local Assist, Lead = IsAssistant and "[A] " or "", IsLeader and "[L] " or ""
@@ -99,7 +118,7 @@ end
 
 oUF.Tags.Events["Tukui:Dead"] = "UNIT_HEALTH"
 oUF.Tags.Methods["Tukui:Dead"] = function(unit)
-	if UnitIsDeadOrGhost(unit) then
+	if Scrub(UnitIsDeadOrGhost(unit), false) then
 		return DEAD
 	end
 end
@@ -120,14 +139,14 @@ end
 
 oUF.Tags.Events["Tukui:AFK"] = "PLAYER_FLAGS_CHANGED"
 oUF.Tags.Methods["Tukui:AFK"] = function(unit)
-	if UnitIsAFK(unit) then
+	if Scrub(UnitIsAFK(unit), false) then
 		return CHAT_FLAG_AFK
 	end
 end
 
 oUF.Tags.Events["Tukui:Classification"] = "UNIT_CLASSIFICATION_CHANGED"
 oUF.Tags.Methods["Tukui:Classification"] = function(unit)
-	local C = UnitClassification(unit)
+	local C = Scrub(UnitClassification(unit), nil)
 
 	if(C == "rare") then
 		return "|cffffff00R |r"

@@ -5,6 +5,7 @@ local HealthBar = GameTooltipStatusBar
 local GetMouseFocus = GetMouseFocus or GetMouseFoci
 local GetItemInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
 local GetItemQualityColor = (C_Item and C_Item.GetItemQualityColor) or GetItemQualityColor
+local GetDetailedItemLevelInfo = (C_Item and C_Item.GetDetailedItemLevelInfo) or GetDetailedItemLevelInfo
 
 local Classification = {
 	worldboss = "|cffAF5050B |r",
@@ -73,10 +74,24 @@ function Tooltip:GetTextColor(unit)
 	end
 end
 
+-- On this client Blizzard passes a *secret* unit token for world tooltips; addon code can't
+-- use it. It's the unit under the cursor, so fall back to "mouseover" (not secret) or nil.
+local IsSecret = function(Value)
+	return issecretvalue and issecretvalue(Value)
+end
+
+local SafeUnit = function(Unit)
+	if IsSecret(Unit) then
+		return UnitExists("mouseover") and "mouseover" or nil
+	end
+
+	return Unit
+end
+
 function Tooltip:OnTooltipSetUnit()
 	local NumLines = self:NumLines()
 	local GetMouseFocus = GetMouseFocus()
-	local Unit = (select(2, self:GetUnit())) or (GetMouseFocus and GetMouseFocus.GetAttribute and GetMouseFocus:GetAttribute("unit"))
+	local Unit = SafeUnit((select(2, self:GetUnit()))) or (GetMouseFocus and GetMouseFocus.GetAttribute and SafeUnit(GetMouseFocus:GetAttribute("unit")))
 
 	if (not Unit) and (UnitExists("mouseover")) then
 		Unit = "mouseover"
@@ -178,10 +193,13 @@ function Tooltip:OnTooltipSetUnit()
 		Tooltip.SetHealthValue(HealthBar, Unit)
 	end
 
-	if T.Classic and T.MyClass == "HUNTER" and Unit == "pet" then
+	-- (was T.Classic only; this client runs the Mainline path but still has pet happiness)
+	local GetPetHappiness = GetPetHappiness or (C_PetInfo and C_PetInfo.GetPetHappiness)
+
+	if T.MyClass == "HUNTER" and Unit == "pet" and GetPetHappiness then
 		local Happiness, DamagePercentage, LoyaltyRate = GetPetHappiness()
 
-		if Happiness then
+		if Happiness and T.Colors.happiness and T.Colors.happiness[Happiness] and LoyaltyRate then
 			local Hex = T.RGBToHex(unpack(T.Colors.happiness[Happiness]))
 			local Happy = ({"Unhappy", "Content", "Happy"})[Happiness]
 			local Loyalty = LoyaltyRate > 0 and "gaining" or "losing"
@@ -195,34 +213,54 @@ function Tooltip:OnTooltipSetUnit()
 end
 
 function Tooltip:SetUnitBorderColor()
-	local Unit = self
+	local Unit = SafeUnit(self)
 	local R, G, B
 	local GameTooltip = GameTooltip
 
-	local Reaction = Unit and UnitReaction(Unit, "player")
-	local Player = Unit and UnitIsPlayer(Unit)
-	local Friend = Unit and UnitIsFriend("player", Unit)
+	if not Unit then
+		return
+	end
+
+	local Reaction = UnitReaction(Unit, "player")
+	local Player = UnitIsPlayer(Unit)
+	local Friend = UnitIsFriend("player", Unit)
+
+	-- reaction / player / friend can be secret too: keep the default border then
+	if IsSecret(Reaction) or IsSecret(Player) or IsSecret(Friend) then
+		return
+	end
 
 	if Player and Friend then
 		local Class = select(2, UnitClass(Unit))
+
+		if IsSecret(Class) or not T.Colors.class[Class] then
+			return
+		end
+
 		local Color = T.Colors.class[Class]
 
 		R, G, B = Color[1], Color[2], Color[3]
 
 		HealthBar:SetStatusBarColor(R, G, B)
-		HealthBar.Backdrop:SetBorderColor(R, G, B)
-
-		GameTooltip.Backdrop:SetBorderColor(R, G, B)
-	elseif Reaction then
+			if HealthBar.Backdrop then
+				HealthBar.Backdrop:SetBorderColor(R, G, B)
+			end
+			if GameTooltip.Backdrop then
+				GameTooltip.Backdrop:SetBorderColor(R, G, B)
+			end
+		elseif Reaction then
 		local Color = T.Colors.reaction[Reaction]
 
 		R, G, B = Color[1], Color[2], Color[3]
 
 		HealthBar:SetStatusBarColor(R, G, B)
-		HealthBar.Backdrop:SetBorderColor(R, G, B)
-
-		GameTooltip.Backdrop:SetBorderColor(R, G, B)
-	end
+			if HealthBar.Backdrop then
+				HealthBar.Backdrop:SetBorderColor(R, G, B)
+			end
+			if GameTooltip.Backdrop then
+				GameTooltip.Backdrop:SetBorderColor(R, G, B)
+			end
+		end
 end
 
 function Tooltip:Skin()
@@ -286,9 +324,9 @@ function Tooltip:OnTooltipSetItem()
 	if IsShiftKeyDown() then
 		local Link = self.GetItem and select(2, self:GetItem())
 
-		if Link then
+		if Link and not IsSecret(Link) and Link:match(":(%w+)") then
 			local ID = "|cFFCA3C3CID|r "..Link:match(":(%w+)")
-			local Level = GetDetailedItemLevelInfo(Link) or 1
+			local Level = GetDetailedItemLevelInfo and GetDetailedItemLevelInfo(Link) or 1
 			local Text = "|cFFCA3C3C"..ITEM_LEVEL_ABBR.."|r "..Level
 
 			self:AddLine(" ")
@@ -302,10 +340,20 @@ function Tooltip:OnTooltipSetItem()
 end
 
 function Tooltip:SetHealthValue(unit)
-	if (UnitIsDeadOrGhost(unit)) then
+	local IsDead = UnitIsDeadOrGhost(unit)
+	local Health, MaxHealth = UnitHealth(unit), UnitHealthMax(unit)
+
+	-- Health of many units is secret on this client: an addon can't compare or format
+	-- it (and trying taints Blizzard's tooltip code), so show no text for those.
+	if issecretvalue and (issecretvalue(IsDead) or issecretvalue(Health) or issecretvalue(MaxHealth)) then
+		self.Text:SetText("")
+
+		return
+	end
+
+	if (IsDead) then
 		self.Text:SetText(DEAD)
 	else
-		local Health, MaxHealth = UnitHealth(unit), UnitHealthMax(unit)
 		local String = (Health and MaxHealth and T.ShortValue(Health).." / "..T.ShortValue(MaxHealth)) or "???"
 
 		if not self.Text:IsShown() then
@@ -321,13 +369,13 @@ function Tooltip:OnValueChanged()
 		return
 	end
 
-	local unit = select(2, self:GetParent():GetUnit())
+	local unit = SafeUnit(select(2, self:GetParent():GetUnit()))
 
-	if (not unit) then
+	if (not unit) and GetMouseFocus then
 		local GMF = GetMouseFocus()
 
 		if (GMF and GMF.GetAttribute and GMF:GetAttribute("unit")) then
-			unit = GMF:GetAttribute("unit")
+			unit = SafeUnit(GMF:GetAttribute("unit"))
 		end
 	end
 
@@ -380,7 +428,7 @@ function Tooltip:ResetBorderColor()
 		self.Backdrop:SetBorderColor(unpack(C["General"].BorderColor))
 	end
 
-	if HealthBar then
+	if HealthBar and HealthBar.Backdrop then
 		HealthBar.Backdrop:SetBorderColor(0, 1, 0)
 
 		if HealthBar.Text then
@@ -413,8 +461,16 @@ function Tooltip:AddHooks()
 		TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, self.OnTooltipSetItem)
 		TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, self.OnTooltipSetUnit)
 	else
-		GameTooltip:HookScript("OnTooltipSetUnit", self.OnTooltipSetUnit)
-		GameTooltip:HookScript("OnTooltipSetItem", self.OnTooltipSetItem)
+			if self.OnTooltipSetUnit then
+				pcall(function()
+					GameTooltip:HookScript("OnTooltipSetUnit", self.OnTooltipSetUnit)
+				end)
+			end
+			if self.OnTooltipSetItem then
+				pcall(function()
+					GameTooltip:HookScript("OnTooltipSetItem", self.OnTooltipSetItem)
+				end)
+			end
 	end
 end
 

@@ -10,7 +10,8 @@ function UnitFrames:Nameplates()
 	local NumDebuffsPerRow = math.ceil(C.NamePlates.Width / 26)
 	local NameLength = C.NamePlates.HealthTag.Value == "" and "[Tukui:NameMedium]" or "[Tukui:NameShort]"
 
-	self:SetScale(UIParent:GetEffectiveScale())
+	self:SetScale(1)
+	self:ClearAllPoints()
 	self:SetSize(C.NamePlates.Width, C.NamePlates.Height)
 	self:SetPoint("CENTER", 0, 0)
 
@@ -161,6 +162,15 @@ function UnitFrames:Nameplates()
 	Highlight:SetBackdropBorderColor(unpack(C.NamePlates.HighlightColor))
 	Highlight:SetFrameLevel(0)
 	Highlight:Hide()
+
+	-- Soft-target icon (sword, loot bag, speech bubble...), drawn by Tukui next to the
+	-- health bar; updated by UnitFrames:UpdateSoftTargetIcons
+	local SoftTargetIcon = self:CreateTexture(nil, "OVERLAY")
+	SoftTargetIcon:SetSize(20, 20)
+	SoftTargetIcon:SetPoint("RIGHT", Health, "LEFT", -4, 0)
+	SoftTargetIcon:Hide()
+
+	self.SoftTargetIcon = SoftTargetIcon
 
 	if T.Retail and C.NamePlates.QuestIcon then
 		local QuestIcon = self:CreateTexture(nil, "OVERLAY")

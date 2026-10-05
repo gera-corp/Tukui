@@ -25,6 +25,16 @@ A default texture will be applied if the widget is a Texture and doesn't have a 
 local _, ns = ...
 local oUF = ns.oUF
 
+-- Tukui (Forever client): group/unit flags can be secret values, which can't be tested.
+-- Like upstream oUF, treat a secret value as "not set" (default).
+local function scrub(value, default)
+	if issecretvalue and issecretvalue(value) then
+		return default
+	end
+
+	return value
+end
+
 local function Update(self, event)
 	local element = self.AssistantIndicator
 	local unit = self.unit
@@ -38,7 +48,7 @@ local function Update(self, event)
 		element:PreUpdate()
 	end
 
-	local isAssistant = UnitInRaid(unit) and UnitIsGroupAssistant(unit) and not UnitIsGroupLeader(unit)
+	local isAssistant = UnitInRaid(unit) and scrub(UnitIsGroupAssistant(unit), false) and not scrub(UnitIsGroupLeader(unit), true)
 	if(isAssistant) then
 		element:Show()
 	else

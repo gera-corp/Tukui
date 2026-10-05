@@ -25,6 +25,16 @@ This element updates by changing the texture.
 local _, ns = ...
 local oUF = ns.oUF
 
+-- Tukui (Forever client): group/unit flags can be secret values, which can't be tested.
+-- Like upstream oUF, treat a secret value as "not set" (default).
+local function scrub(value, default)
+	if issecretvalue and issecretvalue(value) then
+		return default
+	end
+
+	return value
+end
+
 local function Update(self, event)
 	local element = self.LeaderIndicator
 	local unit = self.unit
@@ -48,7 +58,7 @@ local function Update(self, event)
 	-- UnitLeadsAnyGroup(unit). Inside the group formed by the dungeon finder UnitIsGroupLeader(unit) will only return
 	-- true for the instance leader.
 	local isInLFGInstance = HasLFGRestrictions()
-	local isLeader = UnitIsGroupLeader(unit)
+	local isLeader = scrub(UnitIsGroupLeader(unit), false)
 	if(isLeader) then
 		if(isInLFGInstance) then
 			element:SetTexture([[Interface\LFGFrame\UI-LFG-ICON-PORTRAITROLES]])

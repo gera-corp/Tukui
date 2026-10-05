@@ -28,16 +28,18 @@ end
 
 -- Return short value of a number!
 T.ShortValue = function(v)
-	if (v >= 1e6) then
+	local ok, result_m = pcall(function() return v >= 1e6 end)
+	if ok and result_m then
 		return gsub(format("%.1fm", v / 1e6), "%.?0+([km])$", "%1")
-	elseif (v >= 1e3 or v <= -1e3) then
-		return gsub(format("%.1fk", v / 1e3), "%.?0+([km])$", "%1")
-	else
-		return v
 	end
-end
+	local ok2, result_k = pcall(function() return v >= 1e3 or v <= -1e3 end)
+	if ok2 and result_k then
+		return gsub(format("%.1fk", v / 1e3), "%.?0+([km])$", "%1")
+	end
+	return format("%.0f", v)
+	end
 
--- Add comma's to a number
+	-- Add comma's to a number
 T.Comma = function(num)
 	local Left, Number, Right = match(num, "^([^%d]*%d)(%d*)(.-)$")
 
@@ -93,6 +95,11 @@ RegisterStateDriver(T.PetHider, "visibility", "[petbattle] hide; show")
 -- Color Gradient
 T.ColorGradient = function(a, b, ...)
 	local Percent
+
+	if (issecretvalue and (issecretvalue(a) or issecretvalue(b))) then
+		-- Secret values cannot be compared/arithmetic'd; return the "full" (last) color.
+		return select(select("#", ...) - 2, ...)
+	end
 
 	if(b == 0) then
 		Percent = 0
