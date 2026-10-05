@@ -7,11 +7,9 @@ on:
       - "!feature/"
 
 jobs:
-  release:
-    name: Publish development build to CDN
+  build:
+    name: Build development package
     runs-on: ubuntu-22.04
-    env:
-      DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
     steps:
       - name: Clone project
         uses: actions/checkout@v4
@@ -20,13 +18,13 @@ jobs:
       - name: Workaround checkout issues
         run: |
           git fetch --tags --force
+      # Fork: build only (no tukui.org CDN upload), the zip is attached to the run.
       - name: Create Package
         uses: BigWigsMods/packager@v2
         with:
-          args: -n "{package-name}-$GITHUB_REF_NAME-{project-version}"
-      - name: Get package name
-        run: |
-          echo "PACKAGE=$(find .release -type f -name *.zip -printf "%f\n")" >> $GITHUB_ENV
-      - name: Publish package
-        run: |
-          curl https://api.tukui.org/v1/upload/dev/$PACKAGE --upload-file .release/$PACKAGE -H "X-Tukui-Key: $DEPLOY_KEY" -H "Content-Type: application/zip"
+          args: -d -n "{package-name}-$GITHUB_REF_NAME-{project-version}"
+      - name: Keep the zip as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tukui-${{ github.ref_name }}-${{ github.sha }}
+          path: .release/*.zip

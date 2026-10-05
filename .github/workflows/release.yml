@@ -5,12 +5,13 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+
 jobs:
   release:
-    name: Publish release to CDN
+    name: Build package and publish a GitHub release
     runs-on: ubuntu-22.04
-    env:
-      DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
     steps:
       - name: Clone project
         uses: actions/checkout@v4
@@ -19,13 +20,16 @@ jobs:
       - name: Workaround checkout issues
         run: |
           git fetch --tags --force
-      - name: Create Package
+      # Fork: the original pipeline uploaded to the tukui.org CDN with the author's key.
+      # Here the packager builds the zip and attaches it to a GitHub release instead.
+      - name: Create package and GitHub release
         uses: BigWigsMods/packager@v2
         with:
           args: -n "{package-name}-{project-version}"
-      - name: Get package name
-        run: | 
-          echo "PACKAGE=$(find .release -type f -name *.zip -printf "%f\n")" >> $GITHUB_ENV
-      - name: Publish package
-        run: |
-          curl https://api.tukui.org/v1/upload/$PACKAGE --upload-file .release/$PACKAGE -H "X-Tukui-Key: $DEPLOY_KEY" -H "Content-Type: application/zip"
+        env:
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+      - name: Keep the zip as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tukui-${{ github.ref_name }}
+          path: .release/*.zip
