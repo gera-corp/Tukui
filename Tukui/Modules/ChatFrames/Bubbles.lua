@@ -6,8 +6,17 @@ local GetAllChatBubbles = C_ChatBubbles.GetAllChatBubbles
 
 local Messages = {}
 
+local IsSecret = function(Value)
+	return issecretvalue and issecretvalue(Value)
+end
+
 function Bubbles:Update()
 	local Message = self.String:GetText()
+
+	-- Secret bubble text (hidden NPC/player lines) can't be compared
+	if IsSecret(Message) then
+		return
+	end
 
 	-- No need to update
 	if not Message or Message == "" or Message == self.Message then
@@ -119,7 +128,8 @@ end
 function Bubbles:OnEvent(event, message, nickname, _, _, test, _, _, _, _, _, _, guid)
 	if event == "PLAYER_ENTERING_WORLD" then
 		Messages = {}
-	else
+	elseif not (IsSecret(nickname) or IsSecret(message) or IsSecret(guid)) then
+		-- secret senders (e.g. NPC yells here) can't be used as table keys
 		Messages[nickname] = {}
 		Messages[nickname].Guid = guid
 		Messages[nickname].Message = message

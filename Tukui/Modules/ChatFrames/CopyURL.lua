@@ -56,6 +56,12 @@ function Link:SetHyperlink(data, ...)
 end
 
 function Link:Enable()
+	-- Clients with secret values: a Tukui message filter taints Blizzard's chat handler
+	-- (see ChatFrames.lua), so no clickable urls there
+	if issecretvalue then
+		return
+	end
+
 	ChatFrame_AddMessageEventFilter("CHAT_MSG_CHANNEL", self.Find)
 	ChatFrame_AddMessageEventFilter("CHAT_MSG_YELL", self.Find)
 	ChatFrame_AddMessageEventFilter("CHAT_MSG_GUILD", self.Find)

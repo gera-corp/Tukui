@@ -3,6 +3,11 @@ local T, C, L = unpack((select(2, ...)))
 local Chat = T["Chat"]
 local Toast = BNToastFrame
 local Noop = function() end
+
+-- Clients with secret values: Blizzard's chat handler reads Tukui's CHAT_*_GET / CHAT_FLAG_*
+-- globals and the AddMessage override, which taints it; it then stores tainted chat
+-- history ids and later messages with secret senders (MONSTER_YELL) error out.
+local ShortChannelNames = function() return C.Chat.ShortChannelName and not issecretvalue end
 local IsRightChatFound = false
 
 -- Set name for right chat
@@ -210,7 +215,8 @@ function Chat:StyleFrame(frame)
 	end
 
 	-- Security for font, in case if revert back to WoW default we restore instantly the tukui font default.
-	hooksecurefunc(Frame, "SetFont", Chat.SetChatFont)
+	-- (Not a hook on Frame:SetFont: on this client hooking a Blizzard object's method
+	-- breaks it for Blizzard's secure code. FCF_SetChatWindowFontSize is hooked in AddHooks.)
 
 	Frame.IsSkinned = true
 end
@@ -259,8 +265,39 @@ function Chat:Undock(frame)
 	FCF_SetTabPosition(frame, 0)
 end
 
-function Chat:SetChatFrame1Position()
-	self:SetPointBase("BOTTOMLEFT", T.DataTexts.Panels.Left, "TOPLEFT", 0, 4)
+-- ChatFrame1 is an Edit Mode system that Blizzard re-anchors from secure layout
+-- code, so it can't be hooked on this client; poll from our own frame instead.
+function Chat:KeepChatFrame1Position()
+	if Chat.ChatFrame1Keeper then
+		return
+	end
+
+	local Keeper = CreateFrame("Frame")
+	local Elapsed = 0
+
+	Keeper:SetScript("OnUpdate", function(_, Delta)
+		Elapsed = Elapsed + Delta
+
+		if Elapsed < 0.2 then
+			return
+		end
+
+		Elapsed = 0
+
+		local Frame = ChatFrame1
+		local Panel = T.DataTexts.Panels.Left
+		local Point, Relative = Frame:GetPoint(1)
+
+		if Point ~= "BOTTOMLEFT" or Relative ~= Panel or Frame:GetNumPoints() ~= 1 then
+			local ClearAllPoints = Frame.ClearAllPointsBase or Frame.ClearAllPoints
+			local SetPoint = Frame.SetPointBase or Frame.SetPoint
+
+			ClearAllPoints(Frame)
+			SetPoint(Frame, "BOTTOMLEFT", Panel, "TOPLEFT", 0, 4)
+		end
+	end)
+
+	Chat.ChatFrame1Keeper = Keeper
 end
 
 function Chat:SetChatFramePosition()
@@ -283,7 +320,7 @@ function Chat:SetChatFramePosition()
 			Frame:SetPoint("BOTTOMLEFT", T.DataTexts.Panels.Left, "TOPLEFT", 0, 4)
 
 			if T.Retail then
-				hooksecurefunc(Frame, "SetPoint", Chat.SetChatFrame1Position)
+				Chat:KeepChatFrame1Position()
 			end
 		end
 
@@ -454,7 +491,9 @@ function Chat:Reset()
 	if T.Retail or T.MoP then
 		for i = 1, #Channels do
 			ChatFrame_RemoveChannel(ChatFrame1, Channels[i])
-			ChatFrame_AddChannel(ChatFrame6, Channels[i])
+			if type(ChatFrame_AddChannel) == "function" then
+				ChatFrame_AddChannel(ChatFrame6, Channels[i])
+			end
 		end
 
 		-- Adjust Chat Colors
@@ -500,7 +539,10 @@ function Chat:SwitchSpokenDialect(button)
 end
 
 function Chat:AddMessage(text, ...)
-	text = text:gsub("|h%[(%d+)%. .-%]|h", "|h[%1]|h")
+	-- Secret strings (this client) can't be inspected by addon code: pass them through
+	if type(text) == "string" and not (issecretvalue and issecretvalue(text)) then
+		text = text:gsub("|h%[(%d+)%. .-%]|h", "|h[%1]|h")
+	end
 
 	return self.DefaultAddMessage(self, text, ...)
 end
@@ -681,7 +723,7 @@ function Chat:Setup()
 		if i == 2 then
 			CombatLogQuickButtonFrame_Custom:StripTextures()
 		else
-			if C.Chat.ShortChannelName then
+			if ShortChannelNames() then
 				Frame.DefaultAddMessage = Frame.AddMessage
 				Frame.AddMessage = Chat.AddMessage
 			end
@@ -730,7 +772,7 @@ function Chat:Setup()
 	SetCVar("chatClassColorOverride", 0)
 
 	-- Short Channel Names
-	if C.Chat.ShortChannelName then
+	if ShortChannelNames() then
 		--guild
 		CHAT_GUILD_GET = "|Hchannel:GUILD|hG|h %s "
 		CHAT_OFFICER_GET = "|Hchannel:OFFICER|hO|h %s "
@@ -808,7 +850,26 @@ function Chat:AddHooks()
 	hooksecurefunc("FCF_RestorePositionAndDimensions", Chat.SetChatFramePosition)
 	hooksecurefunc("FCF_SavePositionAndDimensions", Chat.SaveChatFramePositionAndDimensions)
 	hooksecurefunc("FCFTab_UpdateAlpha", Chat.NoMouseAlpha)
-	hooksecurefunc(BNToastFrame, "AddToast", Chat.AddToast)
+
+	-- Font size changes from the chat tab menu
+	if FCF_SetChatWindowFontSize then
+		hooksecurefunc("FCF_SetChatWindowFontSize", function(_, ChatFrame)
+			if ChatFrame and ChatFrame.IsSkinned then
+				Chat.SetChatFont(ChatFrame)
+			end
+		end)
+	end
+
+	-- Not a hook on BNToastFrame:AddToast (Blizzard calls it from its event handler,
+	-- which breaks on this client); restyle and move the toast whenever it shows.
+	BNToastFrame:HookScript("OnShow", function(self)
+		Chat.AddToast(self)
+
+		-- Blizzard's alert system may anchor it right after showing
+		C_Timer.After(0, function()
+			Chat.AddToast(self)
+		end)
+	end)
 end
 
 function Chat:AddPanels()
@@ -847,6 +908,132 @@ function Chat:AddPanels()
 	self.Panels.RightChatTabs = TabsBGRight
 end
 
+-- Whispers to "FirstName LastName" characters with a Cyrillic last name. Blizzard's
+-- whisper parser only recognizes the last name with the Lua pattern %w, which doesn't
+-- match Cyrillic letters, so "/w Имя Фамилия" (also what clicking a name in chat types)
+-- whispered "Имя" with "Фамилия" as the text. Full names seen in chat (or known to
+-- autocomplete) are turned into the whisper target here.
+local WhisperNames = {}
+local WhisperSlash
+
+local IsSecretValue = function(Value)
+	return issecretvalue and issecretvalue(Value)
+end
+
+local function GetWhisperSlash()
+	if not WhisperSlash then
+		WhisperSlash = {}
+
+		for _, Key in ipairs({"WHISPER", "SMART_WHISPER"}) do
+			local i = 1
+
+			while _G["SLASH_"..Key..i] do
+				WhisperSlash[strlower(_G["SLASH_"..Key..i])] = true
+				i = i + 1
+			end
+		end
+	end
+
+	return WhisperSlash
+end
+
+local function IsUnitNamed(Unit, Target)
+	if not UnitExists(Unit) or not UnitIsPlayer(Unit) then
+		return
+	end
+
+	-- on this client the second value is the surname (regional unique names), not the realm
+	local Name, Surname = UnitName(Unit)
+
+	if not Name or IsSecretValue(Name) or IsSecretValue(Surname) then
+		return
+	end
+
+	return Name == Target or (Surname and Surname ~= "" and (Name.." "..Surname == Target or Name.."-"..Surname == Target))
+end
+
+local function IsKnownFullName(Target)
+	if WhisperNames[Target] then
+		return true
+	end
+
+	-- whisper from a unit's menu (target, focus, group member...): the name comes from that unit
+	for _, Unit in ipairs({"target", "focus", "mouseover", "softfriend", "softenemy"}) do
+		if IsUnitNamed(Unit, Target) then
+			return true
+		end
+	end
+
+	local Prefix = IsInRaid() and "raid" or "party"
+
+	for i = 1, GetNumGroupMembers() do
+		if IsUnitNamed(Prefix..i, Target) then
+			return true
+		end
+	end
+
+	local List = AUTOCOMPLETE_LIST and AUTOCOMPLETE_LIST.WHISPER_EXTRACT
+
+	if List and C_AutoComplete and C_AutoComplete.GetAutoCompleteResults then
+		local Ok, Results = pcall(C_AutoComplete.GetAutoCompleteResults, Target, 1, 0, true, List.include, List.exclude)
+
+		return Ok and type(Results) == "table" and #Results > 0
+	end
+end
+
+function Chat:TrackFullName(_, _, Sender)
+	if type(Sender) ~= "string" or IsSecretValue(Sender) or not Sender:find(" ") then
+		return
+	end
+
+	WhisperNames[Sender] = true
+	WhisperNames[Ambiguate(Sender, "none")] = true
+end
+
+function Chat:FixFullNameWhisper()
+	local Text = self:GetText()
+
+	if not Text or IsSecretValue(Text) or strsub(Text, 1, 1) ~= "/" then
+		return
+	end
+
+	local Command, First, Last, Message = Text:match("^(/%S+)%s+(%S+)%s+(%S+)%s(.*)$")
+
+	-- Blizzard handles latin last names itself
+	if not Command or not Last:find("[\128-\255]") or not GetWhisperSlash()[strlower(Command)] then
+		return
+	end
+
+	local Target = First.." "..Last
+
+	if not IsKnownFullName(Target) then
+		return
+	end
+
+	self:SetTellTarget(Target)
+	self:SetChatType("WHISPER")
+	self:SetText(Message)
+	self:UpdateHeader()
+end
+
+function Chat:EnableFullNameWhisper()
+	local Tracker = CreateFrame("Frame")
+
+	for _, Event in ipairs({"CHAT_MSG_SAY", "CHAT_MSG_YELL", "CHAT_MSG_EMOTE", "CHAT_MSG_GUILD", "CHAT_MSG_OFFICER", "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER", "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER", "CHAT_MSG_INSTANCE_CHAT", "CHAT_MSG_INSTANCE_CHAT_LEADER", "CHAT_MSG_WHISPER", "CHAT_MSG_CHANNEL"}) do
+		pcall(Tracker.RegisterEvent, Tracker, Event)
+	end
+
+	Tracker:SetScript("OnEvent", Chat.TrackFullName)
+
+	for i = 1, NUM_CHAT_WINDOWS do
+		local EditBox = _G["ChatFrame"..i.."EditBox"]
+
+		if EditBox then
+			EditBox:HookScript("OnTextChanged", Chat.FixFullNameWhisper)
+		end
+	end
+end
+
 function Chat:Enable()
 	if (not C.Chat.Enable) then
 		self:AddPanels()
@@ -868,6 +1055,8 @@ function Chat:Enable()
 	self.Link:Enable()
 	self.Bubbles:Enable()
 	self.History:Enable()
+
+	self:EnableFullNameWhisper()
 
 	for i = 1, 10 do
 		local ChatFrame = _G["ChatFrame"..i]

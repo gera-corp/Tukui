@@ -26,6 +26,13 @@ local Events = {
 	-- "CHAT_MSG_CHANNEL",
 }
 
+local IsSecret = function(Value)
+	return issecretvalue and issecretvalue(Value)
+end
+
+-- Replays the saved lines as plain text. Tukui used to feed them through Blizzard's
+-- ChatFrame_MessageEventHandler from addon code; that tainted Blizzard's chat history
+-- tables, and later real messages failed on secret values (e.g. MONSTER_YELL errors).
 function History:Print()
 	local Temp
 
@@ -34,7 +41,16 @@ function History:Print()
 	for i = #TukuiDatabase.ChatHistory, 1, -1 do
 		Temp = TukuiDatabase.ChatHistory[i]
 
-		pcall(ChatFrame_MessageEventHandler, ChatFrame1, Temp[EntryEvent], unpack(Temp))
+		local Event, Message, Sender = Temp[EntryEvent], Temp[1], Temp[2]
+
+		if type(Event) == "string" and type(Message) == "string" then
+			local ChatType = Event:gsub("^CHAT_MSG_", "")
+			local Info = ChatTypeInfo[ChatType]
+			local Stamp = Temp[EntryTime] and date("%H:%M", Temp[EntryTime]) or ""
+			local Name = (type(Sender) == "string" and Sender ~= "") and (Ambiguate(Sender, "none") .. ": ") or ""
+
+			ChatFrame1:AddMessage(format("|cff888888%s|r %s%s", Stamp, Name, Message), Info and Info.r or 1, Info and Info.g or 1, Info and Info.b or 1)
+		end
 	end
 
 	History.IsPrinting = false
@@ -42,6 +58,13 @@ function History:Print()
 end
 
 function History:Save(event, ...)
+	-- secret values (hidden senders, etc.) can't be kept in saved variables
+	for i = 1, select("#", ...) do
+		if IsSecret((select(i, ...))) then
+			return
+		end
+	end
+
 	local Temp = {...}
 
 	if Temp[1] then
