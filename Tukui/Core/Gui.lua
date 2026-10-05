@@ -116,6 +116,11 @@ local SetValue = function(group, option, value)
 
 	local Settings
 
+	-- make sure we save under the real character name (it can be unknown right after login)
+	if T["Loading"] and T["Loading"].UpdatePlayerName then
+		T["Loading"]:UpdatePlayerName()
+	end
+
 	if (not TukuiDatabase.Settings[T.MyRealm]) then
 		TukuiDatabase.Settings[T.MyRealm] = {}
 	end

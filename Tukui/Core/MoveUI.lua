@@ -245,12 +245,18 @@ Movers:SetScript("OnEvent", function(self, event)
 			end
 		end
 			
-		if T.Retail then
-			hooksecurefunc(EditModeManagerFrame, "EnterEditMode", function()
+		-- Blizzard's Edit Mode opens Tukui's movers instead. OnShow script hook rather
+		-- than hooksecurefunc(EditModeManagerFrame, "EnterEditMode"): on this client a
+		-- hooked Blizzard method breaks when called from secure code. Set up once, this
+		-- event fires on every loading screen.
+		if T.Retail and not Movers.EditModeHooked then
+			EditModeManagerFrame:HookScript("OnShow", function()
 				Movers:OpenEditMode()
-				
+
 				HideUIPanel(EditModeManagerFrame)
 			end)
+
+			Movers.EditModeHooked = true
 		end
 
 		Movers:Hide()
