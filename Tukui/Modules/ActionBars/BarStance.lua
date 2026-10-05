@@ -70,19 +70,21 @@ function ActionBars:CreateStanceBar()
 		
 		ActionBars:MoveStanceButtons(Button, i)
 		
-		if T.Retail then
-			hooksecurefunc(Button, "SetPoint", function(self)
-				local ID = Button:GetID()
-
-				if ID then
-					ActionBars:MoveStanceButtons(Button, ID)
-				end
-			end)
-		end
 	end
 	
 	ActionBars:UpdateStanceBar()
 	ActionBars:SkinStanceButtons()
+
+	if T.Retail then
+		local Buttons, FakeButtons = {}, {}
+
+		for i = 1, 10 do
+			Buttons[i] = _G["StanceButton"..i]
+			FakeButtons[i] = _G["TukuiStanceActionBarButton"..i]
+		end
+
+		ActionBars:KeepButtonsOnFakeButtons(Bar, Buttons, FakeButtons)
+	end
 
 	Movers:RegisterFrame(Bar, "Stance Action Bar")
 end

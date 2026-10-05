@@ -5,27 +5,45 @@ local GUI = T["GUI"]
 local GameMenu = CreateFrame("Frame")
 local Menu = GameMenuFrame
 local Header = Menu.Header
-local Logout = GameMenuButtonLogout
-local Addons = GameMenuButtonAddons
 
-function GameMenu:AddHooks()
-	Menu:SetHeight(Menu:GetHeight() + Logout:GetHeight() - 4)
+local function NudgePoint(frame, dx, dy)
+	local point, relativeTo, relativePoint, x, y = frame:GetPoint()
 
-	local _, RelativeTo, _, _, OffY = Logout:GetPoint()
+	if point then
+		frame:ClearAllPoints()
+		frame:SetPoint(point, relativeTo, relativePoint, x + (dx or 0), y + (dy or 0))
+	end
+end
 
-	if RelativeTo ~= GameMenu.Tukui then
-		GameMenu.Tukui:ClearAllPoints()
-		GameMenu.Tukui:SetPoint("TOPLEFT", RelativeTo, "BOTTOMLEFT", 0, -1)
+function GameMenu:PositionTukuiButton()
+	if not GameMenu.Tukui then return end
 
-		Logout:ClearAllPoints()
-		Logout:SetPoint("TOPLEFT", GameMenu.Tukui, "BOTTOMLEFT", 0, OffY)
+	-- Layout runs on every menu open, after InitButtons. Skin here too: after a
+	-- /reload the InitButtons hook can be installed too late to catch the first
+	-- button creation, leaving half the menu on the default skin.
+	-- NOTE: this hook receives GameMenuFrame as self, not GameMenu.
+	GameMenu:SkinButtons()
+
+	Menu:SetHeight(Menu:GetHeight() + 25)
+
+	for button in Menu.buttonPool:EnumerateActive() do
+		local text = button.GetText and button:GetText()
+
+		if text and (text == _G.LOGOUT or text == _G.LOG_OUT or text == _G.EXIT_GAME or text == _G.RETURN_TO_GAME) then
+			NudgePoint(button, 0, -25)
+		else
+			if text == _G.MACROS then
+				GameMenu.Tukui:Show()
+				GameMenu.Tukui:ClearAllPoints()
+				GameMenu.Tukui:SetPoint("TOPLEFT", button, "BOTTOMLEFT", 0, -Menu.spacing)
+			end
+		end
 	end
 end
 
 function GameMenu:CreateTukuiMenuButton()
-	local Tukui = CreateFrame("Button", nil, Menu, "GameMenuButtonTemplate")
-	Tukui:SetSize(144, 21)
-	Tukui:SetPoint("TOPLEFT", Addons, "BOTTOMLEFT", 0, -1)
+	local Tukui = CreateFrame("Button", nil, Menu, "MainMenuFrameButtonTemplate")
+	Tukui:SetSize(200, 35)
 	Tukui:SetText("Tukui")
 
 	Tukui:SetScript("OnClick", function(self)
@@ -40,11 +58,86 @@ function GameMenu:CreateTukuiMenuButton()
 		HideUIPanel(Menu)
 	end)
 
-	if not T.Retail then
-		hooksecurefunc("GameMenuFrame_UpdateVisibleButtons", self.AddHooks)
-	end
+	hooksecurefunc(Menu, "Layout", GameMenu.PositionTukuiButton)
 
 	self.Tukui = Tukui
+end
+
+local function SetHover(self)
+	local Backdrop = self.Backdrop
+	if not Backdrop then return end
+
+	local Class = select(2, UnitClass("player"))
+	local Color = RAID_CLASS_COLORS[Class]
+	if T.Toolkit.Settings.ClassColors then
+		Color.r, Color.g, Color.b = unpack(T.Toolkit.Settings.ClassColors[Class])
+	end
+
+	Backdrop:SetBackdropColor(Color.r * .2, Color.g * .2, Color.b * .2)
+	Backdrop:SetBorderColor(Color.r, Color.g, Color.b)
+end
+
+local function SetNormal(self)
+	local Backdrop = self.Backdrop
+	if not Backdrop then return end
+
+	local Settings = T.Toolkit.Settings
+	Backdrop:SetBackdropColor(Settings.BackdropColor[1], Settings.BackdropColor[2], Settings.BackdropColor[3], 1)
+	Backdrop:SetBorderColor(Settings.BorderColor[1], Settings.BorderColor[2], Settings.BorderColor[3])
+end
+
+-- AddButton() clears OnEnter/OnLeave (SetScript nil) on every menu open, which
+-- drops SkinButton's HookScript hover hooks. Re-apply hover via SetScript (not
+-- HookScript, to avoid stacking) for every button on each skin pass.
+local function ApplyHover(button)
+	if not button then return end
+
+	button:SetScript("OnEnter", SetHover)
+	button:SetScript("OnLeave", SetNormal)
+end
+
+function GameMenu:SkinButtons()
+	local menu = Menu
+
+	if not menu.buttonPool then return end
+
+	local function SkinOne(button)
+		if not button or not button.SkinButton then return end
+
+		button:SkinButton(nil, nil, true)
+
+		-- MainMenuFrameButtonTemplate is a ThreeSlice button (Left/Center/Right
+		-- textures). Its UpdateButton mixin re-applies the default red atlas on
+		-- every OnShow/OnEnable/OnMouseUp, which undoes the skin (worst after a
+		-- /reload, when buttons are reused from the pool with IsSkinned set).
+		if button.UpdateButton then
+			button.UpdateButton = function() end
+		end
+
+		-- SkinButton hides "Middle", but ThreeSlice buttons name the center
+		-- texture "Center" — hide it explicitly.
+		if button.Center then button.Center:SetAlpha(0) end
+	end
+
+	for button in menu.buttonPool:EnumerateActive() do
+		if button then
+			if not button.IsSkinned then
+				SkinOne(button)
+				button.IsSkinned = true
+			end
+
+			ApplyHover(button)
+		end
+	end
+
+	if GameMenu.Tukui then
+		if not GameMenu.Tukui.IsSkinned then
+			SkinOne(GameMenu.Tukui)
+			GameMenu.Tukui.IsSkinned = true
+		end
+
+		ApplyHover(GameMenu.Tukui)
+	end
 end
 
 function GameMenu:Enable()
@@ -52,22 +145,35 @@ function GameMenu:Enable()
 
 	if not AddOnSkins then
 		if T.Retail then
-			Header:StripTextures()
+			if Header then Header:StripTextures() end
 
-			Header:ClearAllPoints()
-			Header:SetPoint("TOP", Menu, 0, 7)
+			if Header then
+				Header:ClearAllPoints()
+				Header:SetPoint("TOP", Menu, 0, 7)
+			end
 
-			Menu.Border:StripTextures()
+			if Menu.Border then Menu.Border:StripTextures() end
+
+			Menu:CreateBackdrop("Transparent")
+			Menu:CreateShadow()
+
+			-- Buttons inside a section sit flush (spacing defaults to 0); give
+			-- them a little breathing room so they don't look like they overlap.
+			Menu.spacing = 6
+
+			if Menu.InitButtons then
+				hooksecurefunc(Menu, "InitButtons", GameMenu.SkinButtons)
+			end
 		else
 			Menu:StripTextures()
-		end
 
-		Menu:CreateBackdrop("Transparent")
-		Menu:CreateShadow()
+			Menu:CreateBackdrop("Transparent")
+			Menu:CreateShadow()
 
-		for _, Button in pairs({Menu:GetChildren()}) do
-			if Button.IsObjectType and Button:IsObjectType("Button") then
-				Button:SkinButton(nil, nil, true)
+			for _, Button in pairs({Menu:GetChildren()}) do
+				if Button.IsObjectType and Button:IsObjectType("Button") then
+					Button:SkinButton(nil, nil, true)
+				end
 			end
 		end
 	end

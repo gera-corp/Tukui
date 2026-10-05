@@ -151,10 +151,14 @@ if T.Retail then
 					local Texture = Button.Icon:GetTexture()
 
 					if Texture then
-						-- it's a button
-						Button.Border:SetAlpha(0)
-						Button.Background:SetAlpha(0)
-					else
+									-- it's a button
+									if Button.Border then
+										Button.Border:SetAlpha(0)
+									end
+									if Button.Background then
+										Button.Background:SetAlpha(0)
+									end
+								else
 						-- it's a dropdown, and we don't need them
 						Button:StripTextures()
 						
@@ -229,6 +233,35 @@ if T.Retail then
 		FadeMap(WorldMapFrame, C.Misc.FadeWorldMapAlpha / 100)
 	end
 
+	-- Replaces hooksecurefunc on WorldMapFrame (Maximize, Minimize, SynchronizeDisplayState,
+	-- UpdateMaximizedSize) and PlayerMovementFrameFader.AddDeferredFrame: on this client,
+	-- hooking a Blizzard object's method breaks it when Blizzard calls it from secure code.
+	-- Runs from the map's OnShow and OnUpdate instead and reacts to state changes.
+	function WorldMap:WatchDisplayState()
+		local Maximized = WorldMapFrame:IsMaximized()
+
+		if Maximized ~= WorldMap.WasMaximized then
+			WorldMap.WasMaximized = Maximized
+
+			if Maximized then
+				WorldMap:SetLargeWorldMap()
+				WorldMap:SynchronizeDisplayState()
+			else
+				WorldMap:SetSmallWorldMap()
+			end
+		end
+
+		-- Blizzard (re)sized the maximized map: apply Tukui's scaling on top of it
+		if Maximized then
+			local Width, Height = WorldMapFrame:GetSize()
+
+			if not WorldMap.AppliedWidth or math.abs(Width - WorldMap.AppliedWidth) > 0.5 or math.abs(Height - WorldMap.AppliedHeight) > 0.5 then
+				WorldMap:UpdateMaximizedSize()
+				WorldMap.AppliedWidth, WorldMap.AppliedHeight = WorldMapFrame:GetSize()
+			end
+		end
+	end
+
 	function WorldMap:Enable()
 		if not C.Misc.WorldMapEnable then
 			return
@@ -236,6 +269,20 @@ if T.Retail then
 
 		-- Set Scaling
 		Scaling = C.General.WorldMapScale / 100
+
+		-- Clients with secret values (WoW Forever): resizing, rescaling, moving and re-laying out
+		-- Blizzard's map from addon code (SetSize, OnFrameSizeChanged, SetUIPanelAttribute...)
+		-- taints the map canvas, and in combat Blizzard then blocks its quest pins
+		-- ("blocked because of taint from Tukui - Button:SetPassThroughButtons()").
+		-- Leave the map itself alone there and only add the coordinates.
+		if issecretvalue then
+			WorldMap.Interval = 0.1
+			WorldMap.UpdateEveryXSeconds = WorldMap.Interval
+			WorldMap:CreateCoords()
+			WorldMapFrame:HookScript("OnUpdate", WorldMap.OnUpdate)
+
+			return
+		end
 
 		self:SkinMap()
 		self:AddMoving()
@@ -261,11 +308,14 @@ if T.Retail then
 		WorldMapFrameCloseButton.Backdrop.Texture:SetPoint("CENTER")
 		WorldMapFrameCloseButton.Backdrop.Texture:SetTexture(C.Medias.Close)
 
-		hooksecurefunc(WorldMapFrame, "Maximize", self.SetLargeWorldMap)
-		hooksecurefunc(WorldMapFrame, "Minimize", self.SetSmallWorldMap)
-		hooksecurefunc(WorldMapFrame, "SynchronizeDisplayState", self.SynchronizeDisplayState)
-		hooksecurefunc(WorldMapFrame, "UpdateMaximizedSize", self.UpdateMaximizedSize)
-		hooksecurefunc(PlayerMovementFrameFader, "AddDeferredFrame", self.UpdateMapFading)
+		WorldMapFrame:HookScript("OnShow", function()
+			-- Re-sync position on every open. The size is left alone unless Blizzard changed
+			-- it, otherwise the scaling would be applied again on top of itself.
+			WorldMap.WasMaximized = nil
+			WorldMap:WatchDisplayState()
+			WorldMap:UpdateMapFading()
+		end)
+		WorldMapFrame:HookScript("OnUpdate", WorldMap.WatchDisplayState)
 
 		-- Always use bigger map on Tukui
 		SetCVar("miniWorldMap", 0)

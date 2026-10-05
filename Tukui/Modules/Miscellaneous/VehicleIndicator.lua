@@ -24,7 +24,25 @@ function VehicleIndicator:Enable()
 	Indicator:SetPoint("CENTER", Holder)
 	Indicator:SetFrameStrata("BACKGROUND")
 	
-	hooksecurefunc(VehicleSeatIndicator, "SetPoint", VehicleIndicator.SetPosition)
+	-- Blizzard re-anchors it from secure layout code, where a hooked SetPoint breaks
+	-- on this client; the holder puts it back by polling instead.
+	local Elapsed = 0
+
+	Holder:SetScript("OnUpdate", function(_, Delta)
+		Elapsed = Elapsed + Delta
+
+		if Elapsed < 0.2 then
+			return
+		end
+
+		Elapsed = 0
+
+		local _, Relative = Indicator:GetPoint(1)
+
+		if Relative ~= Holder or Indicator:GetNumPoints() ~= 2 then
+			VehicleIndicator:SetPosition()
+		end
+	end)
 
 	Movers:RegisterFrame(Holder, "Vehicle Indicator")
 end

@@ -72,9 +72,22 @@ end
 function DropDown:Enable()
 	if Menu then
 		local Manager = Menu.GetManager()
+		local LastMenu
 
-		hooksecurefunc(Manager, "OpenMenu", self.Skin)
-		hooksecurefunc(Manager, "OpenContextMenu", self.Skin)
+		-- Not hooks on Manager:OpenMenu/OpenContextMenu: on this client a hooked Blizzard
+		-- method breaks when Blizzard calls it from secure code (e.g. unit frame menus).
+		-- Watch for a newly opened menu instead.
+		self:SetScript("OnUpdate", function()
+			local OpenMenu = Manager:GetOpenMenu()
+
+			if OpenMenu ~= LastMenu then
+				LastMenu = OpenMenu
+
+				if OpenMenu then
+					DropDown:Skin()
+				end
+			end
+		end)
 	else
 		hooksecurefunc("UIDropDownMenu_CreateFrames", self.Skin)
 

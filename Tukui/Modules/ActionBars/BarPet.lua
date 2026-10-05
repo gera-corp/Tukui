@@ -78,15 +78,6 @@ function ActionBars:CreatePetBar()
 		
 		ActionBars:MovePetButtons(Button, i)
 
-		if T.Retail then
-			hooksecurefunc(Button, "SetPoint", function(self)
-				local ID = Button:GetID()
-
-				if ID then
-					ActionBars:MovePetButtons(Button, ID)
-				end
-			end)
-		end
 
 		Bar:SetAttribute("addchild", Button)
 		Bar["Button"..i] = Button
@@ -114,6 +105,17 @@ function ActionBars:CreatePetBar()
 	end)
 	
 	RegisterStateDriver(Bar, "visibility", "[@pet,exists,nopossessbar] show; hide")
+
+	if T.Retail then
+		local Buttons, FakeButtons = {}, {}
+
+		for i = 1, NUM_PET_ACTION_SLOTS do
+			Buttons[i] = _G["PetActionButton"..i]
+			FakeButtons[i] = _G["TukuiPetActionBarButton"..i]
+		end
+
+		ActionBars:KeepButtonsOnFakeButtons(Bar, Buttons, FakeButtons)
+	end
 
 	Movers:RegisterFrame(Bar, "Pet Action Bar")
 end

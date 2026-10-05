@@ -54,7 +54,11 @@ Toolkit.API.Kill = function(self)
 		self:UnregisterAllEvents()
 		self:SetParent(Hider)
 	else
-		self.Show = self.Hide
+		-- Regions: keep them invisible with alpha instead of replacing self.Show. On this
+		-- client Blizzard's secure code can't call functions an addon put on its objects.
+		if self.SetAlpha then
+			self:SetAlpha(0)
+		end
 	end
 
 	self:Hide()
@@ -177,7 +181,29 @@ Toolkit.API.CreateBackdrop = function(self, BackgroundTemplate, BackgroundTextur
 	local BackdropR, BackdropG, BackdropB = unpack(Toolkit.Settings.BackdropColor)
 	local BorderSize = Toolkit.Functions.Scale(1)
 
-	self.Backdrop:SetBackdrop({bgFile = BackgroundTexture or Toolkit.Settings.NormalTexture})
+	-- Frames with a *secret* size (Blizzard menus, damage meter bars... on clients with secret
+	-- values): Blizzard's backdrop computes texture coordinates from the size and errors out
+	-- when called from addon code. Use a plain background texture there, same API.
+	local Width = self:GetWidth()
+
+	if issecretvalue and issecretvalue(Width) then
+		local Background = self.Backdrop:CreateTexture(nil, "BACKGROUND", nil, -8)
+
+		Background:SetAllPoints()
+		Background:SetTexture(BackgroundTexture or Toolkit.Settings.NormalTexture)
+
+		self.Backdrop.TukuiBackground = Background
+		self.Backdrop.SetBackdropColor = function(Frame, R, G, B, A)
+			Frame.TukuiBackground:SetVertexColor(R, G, B, A or 1)
+		end
+		self.Backdrop.GetBackdropColor = function(Frame)
+			return Frame.TukuiBackground:GetVertexColor()
+		end
+		self.Backdrop.SetBackdropBorderColor = function() end
+	else
+		self.Backdrop:SetBackdrop({bgFile = BackgroundTexture or Toolkit.Settings.NormalTexture})
+	end
+
 	self.Backdrop:SetBackdropColor(BackdropR, BackdropG, BackdropB, BackgroundAlpha)
 
 	self.Backdrop.BorderTop = self.Backdrop:CreateTexture(nil, "BORDER", nil, 1)
@@ -326,14 +352,19 @@ Toolkit.API.SkinButton = function(self, BackdropStyle, Shadows, Strip)
 		end
 
 		local Class = select(2, UnitClass("player"))
-		local Color = RAID_CLASS_COLORS[Class]
+		local R, G, B
 
+		-- Read into locals: this used to write Tukui's colors into Blizzard's global
+		-- RAID_CLASS_COLORS table, which tainted every Blizzard reader of class colors.
 		if Toolkit.Settings.ClassColors then
-			Color.r, Color.g, Color.b = unpack(Toolkit.Settings.ClassColors[Class])
+			R, G, B = unpack(Toolkit.Settings.ClassColors[Class])
+		else
+			local Color = RAID_CLASS_COLORS[Class]
+			R, G, B = Color.r, Color.g, Color.b
 		end
 
-		self.Backdrop:SetBackdropColor(Color.r * .2, Color.g * .2, Color.b * .2)
-		self.Backdrop:SetBorderColor(Color.r, Color.g, Color.b)
+		self.Backdrop:SetBackdropColor(R * .2, G * .2, B * .2)
+		self.Backdrop:SetBorderColor(R, G, B)
 	end)
 
 	self:HookScript("OnLeave", function()

@@ -43,9 +43,203 @@ if T.Retail then
 		end
 	end
 
-	function ObjectiveTracker:OnMove()
-		ObjectiveTrackerFrame:ClearAllPoints()
-		ObjectiveTrackerFrame:SetPointBase("TOP", TukuiObjectiveTracker)
+	-- No hook on ObjectiveTrackerFrame:SetPoint: Blizzard calls it from inside secure
+	-- layout code (UIParent managed frames), and an addon hook there breaks the call
+	-- ("attempt to call a nil value" in LayoutChildren). Instead the holder polls and
+	-- puts the tracker back whenever Blizzard re-anchored it.
+	function ObjectiveTracker:OnUpdate(Elapsed)
+		self.Elapsed = (self.Elapsed or 0) + Elapsed
+
+		if self.Elapsed < 0.2 then
+			return
+		end
+
+		self.Elapsed = 0
+
+		ObjectiveTracker:SkinTracker()
+
+		-- Questie (Forever) hides Blizzard's tracker when its own tracker is on, but can't do
+		-- that in combat (the tracker holds secure quest item buttons), so Blizzard's tracker
+		-- popped up during fights. Alpha can be changed in combat: keep it invisible then.
+		local Profile = Questie and Questie.db and Questie.db.profile
+		local HiddenByQuestie = Profile and Profile.trackerEnabled and not Profile.showBlizzardQuestTimer
+		local Alpha = HiddenByQuestie and 0 or 1
+
+		if ObjectiveTrackerFrame:GetAlpha() ~= Alpha then
+			ObjectiveTrackerFrame:SetAlpha(Alpha)
+		end
+
+		-- An invisible (alpha 0) tracker still catches the mouse: its quest tooltips popped up
+		-- over empty screen. While Questie's tracker replaces it, park it off screen instead
+		-- (out of combat only: it may hold secure quest item buttons).
+		local Target = self
+		local Offscreen = HiddenByQuestie and not InCombatLockdown()
+
+		if Offscreen then
+			Target = UIParent
+		end
+
+		local Point, Relative = ObjectiveTrackerFrame:GetPoint(1)
+		local WantPoint = Offscreen and "TOPLEFT" or "TOP"
+
+		if not (HiddenByQuestie and InCombatLockdown()) and (Point ~= WantPoint or Relative ~= Target or ObjectiveTrackerFrame:GetNumPoints() ~= 1) then
+			-- Base versions skip Edit Mode's snapping logic in the overrides
+			local ClearAllPoints = ObjectiveTrackerFrame.ClearAllPointsBase or ObjectiveTrackerFrame.ClearAllPoints
+			local SetPoint = ObjectiveTrackerFrame.SetPointBase or ObjectiveTrackerFrame.SetPoint
+
+			ClearAllPoints(ObjectiveTrackerFrame)
+
+			if Offscreen then
+				SetPoint(ObjectiveTrackerFrame, "TOPLEFT", UIParent, "TOPRIGHT", 5000, 0)
+			else
+				SetPoint(ObjectiveTrackerFrame, "TOP", self)
+			end
+		end
+	end
+
+	-- Tukui look for the modern (TWW-style) tracker. Applied from the holder's OnUpdate,
+	-- not from hooks: see OnUpdate above. Everything here is idempotent and cheap.
+	local function SkinHeader(Header, IsCollapsed)
+		local Minimize = Header.MinimizeButton
+
+		if not Header.TukuiSkinned then
+			if Header.Background then
+				Header.Background:SetAlpha(0)
+			end
+
+			if Header.Text then
+				Header.Text:SetFont(C.Medias.Font, 14, "")
+				Header.Text:SetShadowOffset(1, -1)
+			end
+
+			-- Dark Tukui panel behind the header, class colored line as its bottom edge
+			local Panel = CreateFrame("Frame", nil, Header)
+			Panel:SetAllPoints(Header)
+			Panel:SetFrameLevel(math.max(0, Header:GetFrameLevel() - 1))
+			Panel:CreateBackdrop("Transparent")
+			Panel:CreateShadow()
+
+			local Line = Panel:CreateTexture(nil, "ARTWORK")
+			Line:SetHeight(2)
+			Line:SetPoint("BOTTOMLEFT", Panel, "BOTTOMLEFT", 1, 1)
+			Line:SetPoint("BOTTOMRIGHT", Panel, "BOTTOMRIGHT", -1, 1)
+			Line:SetColorTexture(unpack(ClassColor))
+
+			Header.TukuiPanel = Panel
+
+			if Minimize then
+				Minimize.TukuiArrow = Minimize:CreateTexture(nil, "OVERLAY")
+				Minimize.TukuiArrow:SetSize(12, 12)
+				Minimize.TukuiArrow:SetPoint("CENTER")
+			end
+
+			Header.TukuiSkinned = true
+		end
+
+		if Minimize then
+			-- Blizzard swaps the collapse/expand atlas on these, alpha survives that
+			for _, Texture in pairs({Minimize:GetNormalTexture(), Minimize:GetPushedTexture(), Minimize:GetHighlightTexture()}) do
+				if Texture then
+					Texture:SetAlpha(0)
+				end
+			end
+
+			Minimize.TukuiArrow:SetTexture(IsCollapsed and C.Medias.ArrowDown or C.Medias.ArrowUp)
+		end
+	end
+
+	local function SkinItemButton(Button)
+		if Button.TukuiSkinned or not Button.icon then
+			return
+		end
+
+		if Button.NormalTexture then
+			Button.NormalTexture:SetAlpha(0)
+		end
+
+		if Button:GetPushedTexture() then
+			Button:GetPushedTexture():SetAlpha(0)
+		end
+
+		Button:CreateBackdrop()
+		Button:CreateShadow()
+		Button:StyleButton()
+
+		Button.icon:SetInside()
+		Button.icon:SetTexCoord(unpack(T.IconCoord))
+
+		if Button.Count then
+			Button.Count:ClearAllPoints()
+			Button.Count:SetPoint("BOTTOMRIGHT", Button, 0, 3)
+			Button.Count:SetFont(C.Medias.Font, 12, "OUTLINE")
+		end
+
+		if Button.HotKey then
+			Button.HotKey:SetAlpha(0)
+		end
+
+		Button.TukuiSkinned = true
+	end
+
+	local function SkinProgressBar(ProgressBar)
+		local Bar = ProgressBar.Bar
+
+		if not Bar or Bar.TukuiSkinned then
+			return
+		end
+
+		local R, G, B = unpack(ClassColor)
+
+		for _, Key in pairs({"BorderLeft", "BorderRight", "BorderMid", "BarBG", "BarFrame", "BarFrame2", "BarFrame3", "BarGlow", "Sheen", "IconBG"}) do
+			if Bar[Key] then
+				Bar[Key]:SetAlpha(0)
+			end
+		end
+
+		Bar:SetStatusBarTexture(T.GetTexture(C["Textures"].QuestProgressTexture))
+		Bar:SetStatusBarColor(R, G, B)
+		Bar:CreateBackdrop()
+		Bar.Backdrop:SetBackdropColor(R * .15, G * .15, B * .15)
+		Bar.Backdrop:CreateShadow()
+		Bar.Backdrop:SetFrameLevel(math.max(0, Bar:GetFrameLevel() - 1))
+		Bar.Backdrop:SetOutside(Bar)
+
+		if Bar.Label then
+			Bar.Label:SetFont(C.Medias.Font, 12, "")
+			Bar.Label:SetShadowOffset(1, -1)
+		end
+
+		Bar.TukuiSkinned = true
+	end
+
+	function ObjectiveTracker:SkinTracker()
+		local Tracker = ObjectiveTrackerFrame
+
+		if Tracker.NineSlice then
+			Tracker.NineSlice:SetAlpha(0)
+		end
+
+		if Tracker.Header then
+			SkinHeader(Tracker.Header, Tracker.isCollapsed)
+		end
+
+		for _, Module in pairs(Tracker.modules or {}) do
+			if Module.Header then
+				SkinHeader(Module.Header, Module.isCollapsed)
+			end
+
+			if Module.usedRightEdgeFrames then
+				for _, Frame in pairs(Module.usedRightEdgeFrames) do
+					SkinItemButton(Frame)
+				end
+			end
+
+			if Module.usedProgressBars then
+				for _, ProgressBar in pairs(Module.usedProgressBars) do
+					SkinProgressBar(ProgressBar)
+				end
+			end
+		end
 	end
 
 	function ObjectiveTracker:SetDefaultPosition()
@@ -53,17 +247,41 @@ if T.Retail then
 		local Data = TukuiDatabase.Variables[T.MyRealm][T.MyName]
 		local ObjectiveTrackerFrame = ObjectiveTrackerFrame
 
+		-- Enable runs on every PLAYER_ENTERING_WORLD, set up only once
+		if TukuiObjectiveTracker then
+			return
+		end
+
 		local ObjectiveFrameHolder = CreateFrame("Frame", "TukuiObjectiveTracker", UIParent)
 		ObjectiveFrameHolder:SetSize(130, 22)
 		ObjectiveFrameHolder:SetPoint(Anchor1, Parent, Anchor2, X, Y)
 
-		ObjectiveTrackerFrame:ClearAllPoints()
-		ObjectiveTrackerFrame:SetPoint("TOP", ObjectiveFrameHolder)
+		-- Take the tracker out of Blizzard's right-side frame layout for good. That layout
+		-- re-anchors (and re-parents) it on nearly every quest update, which made it jump
+		-- between the default spot and ours. AddManagedFrame skips frames with this flag.
+		ObjectiveTrackerFrame.ignoreFramePositionManager = true
+
+		local LayoutParent = ObjectiveTrackerFrame.layoutParent
+
+		if LayoutParent and LayoutParent.RemoveManagedFrame then
+			LayoutParent:RemoveManagedFrame(ObjectiveTrackerFrame)
+		end
+
+		ObjectiveTrackerFrame:SetParent(UIParent)
+
+		ObjectiveTracker.OnUpdate(ObjectiveFrameHolder, 1)
 		ObjectiveTrackerFrame:SetHeight(T.ScreenHeight - 520)
 		ObjectiveTrackerFrame:SetClampedToScreen(false)
 
-		if T.Retail then
-			hooksecurefunc(ObjectiveTrackerFrame, "SetPoint", ObjectiveTracker.OnMove)
+		ObjectiveFrameHolder:SetScript("OnUpdate", ObjectiveTracker.OnUpdate)
+
+		-- Tukui font for quest titles and objective lines
+		if ObjectiveTrackerHeaderFont then
+			ObjectiveTrackerHeaderFont:SetFont(C.Medias.Font, 14, "")
+		end
+
+		if ObjectiveTrackerLineFont then
+			ObjectiveTrackerLineFont:SetFont(C.Medias.Font, 12, "")
 		end
 
 		Movers:RegisterFrame(ObjectiveFrameHolder, "Objectives Tracker")

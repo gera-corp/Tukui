@@ -61,16 +61,56 @@ function RaidUtilities:Toggle()
 	end
 end
 
-function RaidUtilities:SetRaidTarget()
-	SetRaidTarget("target", self.ID)
+-- SetRaidTarget is protected on this client: addon code calling it from OnClick got
+-- "Tukui blocked". Use Blizzard's secure "raidtarget" action on the (already secure) button.
+function RaidUtilities.MakeMarkerButton(Button)
+	Button:SetAttribute("type", "raidtarget")
+	Button:SetAttribute("unit", "target")
+
+	if Button.ID == 0 then
+		Button:SetAttribute("action", "clear")
+	else
+		Button:SetAttribute("action", "set")
+		Button:SetAttribute("marker", Button.ID)
+	end
 end
 
 function RaidUtilities:SetCountdown()
 	C_PartyInfo.DoCountdown(10)
 end
 
+-- Blizzard's DISBAND_RAID dialog doesn't exist on this client anymore: own confirmation
+T.Popups.Popup["TUKUI_DISBAND_GROUP"] = {
+	Question = GetLocale() == "ruRU" and "Распустить группу? Все участники будут исключены." or "Disband the group? All members will be removed.",
+	Answer1 = ACCEPT,
+	Answer2 = CANCEL,
+	Function1 = function()
+		local Unit = IsInRaid() and "raid" or "party"
+		local Uninvite = (C_PartyInfo and C_PartyInfo.UninviteUnit) or UninviteUnit
+
+		for i = 1, GetNumGroupMembers() do
+			local Member = Unit..i
+
+			if UnitExists(Member) and not UnitIsUnit(Member, "player") then
+				local Name, Realm = UnitName(Member)
+
+				if Name and not (issecretvalue and (issecretvalue(Name) or issecretvalue(Realm))) then
+					-- names here can be "Name Surname" (second value is the surname, not the realm)
+					Uninvite((Realm and Realm ~= "") and (Name.." "..Realm) or Name)
+				end
+			end
+		end
+
+		C_PartyInfo.LeaveParty()
+	end,
+}
+
 function RaidUtilities:Disband()
-	StaticPopup_Show("DISBAND_RAID")
+	if StaticPopupDialogs and StaticPopupDialogs["DISBAND_RAID"] then
+		StaticPopup_Show("DISBAND_RAID")
+	else
+		T.Popups.ShowPopup("TUKUI_DISBAND_GROUP")
+	end
 end
 
 function RaidUtilities:DisplayMessage()
@@ -153,58 +193,58 @@ function RaidUtilities:Enable()
 			Disband:SetPoint("TOPLEFT", ReadyCheck, "TOPRIGHT", 4, 0)
 
 			local Remove = RaidUtilities:CreateBasicButton(self:GetName().."ButtonTargetRemove", PassIcon, "Remove marker on current target (if any)")
-			Remove:SetScript("OnClick", RaidUtilities.SetRaidTarget)
 			Remove:SetSize(ButtonSize, ButtonSize + ButtonSize + 4)
 			Remove:SetPoint("TOPLEFT", Countdown, "TOPRIGHT", 13, 0)
 			Remove.ID = 0
+			RaidUtilities.MakeMarkerButton(Remove)
 
 			local Star = RaidUtilities:CreateBasicButton(self:GetName().."ButtonTargetStar", Icons[5].Icon, "Set "..Icons[5].Icon.." on current target")
-			Star:SetScript("OnClick", RaidUtilities.SetRaidTarget)
 			Star:SetSize(ButtonSize, ButtonSize)
 			Star:SetPoint("TOPLEFT", Remove, "TOPRIGHT", 4, 0)
 			Star.ID = 1
+			RaidUtilities.MakeMarkerButton(Star)
 
 			local Circle = RaidUtilities:CreateBasicButton(self:GetName().."ButtonTargetCircle", Icons[6].Icon, "Set "..Icons[6].Icon.." on current target")
-			Circle:SetScript("OnClick", RaidUtilities.SetRaidTarget)
 			Circle:SetSize(ButtonSize, ButtonSize)
 			Circle:SetPoint("TOPLEFT", Star, "TOPRIGHT", 4, 0)
 			Circle.ID = 2
+			RaidUtilities.MakeMarkerButton(Circle)
 
 			local Diamond = RaidUtilities:CreateBasicButton(self:GetName().."ButtonTargetDiamond", Icons[3].Icon, "Set "..Icons[3].Icon.." on current target")
-			Diamond:SetScript("OnClick", RaidUtilities.SetRaidTarget)
 			Diamond:SetSize(ButtonSize, ButtonSize)
 			Diamond:SetPoint("TOPLEFT", Circle, "TOPRIGHT", 4, 0)
 			Diamond.ID = 3
+			RaidUtilities.MakeMarkerButton(Diamond)
 
 			local Triangle = RaidUtilities:CreateBasicButton(self:GetName().."ButtonTargetTriangle", Icons[2].Icon, "Set "..Icons[2].Icon.." on current target")
-			Triangle:SetScript("OnClick", RaidUtilities.SetRaidTarget)
 			Triangle:SetSize(ButtonSize, ButtonSize)
 			Triangle:SetPoint("TOPLEFT", Diamond, "TOPRIGHT", 4, 0)
 			Triangle.ID = 4
+			RaidUtilities.MakeMarkerButton(Triangle)
 
 			local Moon = RaidUtilities:CreateBasicButton(self:GetName().."ButtonTargetMoon", Icons[7].Icon, "Set "..Icons[7].Icon.." on current target")
-			Moon:SetScript("OnClick", RaidUtilities.SetRaidTarget)
 			Moon:SetSize(ButtonSize, ButtonSize)
 			Moon:SetPoint("BOTTOMLEFT", Remove, "BOTTOMRIGHT", 4, 0)
 			Moon.ID = 5
+			RaidUtilities.MakeMarkerButton(Moon)
 
 			local Square = RaidUtilities:CreateBasicButton(self:GetName().."ButtonTargetSquare", Icons[1].Icon, "Set "..Icons[1].Icon.." on current target")
-			Square:SetScript("OnClick", RaidUtilities.SetRaidTarget)
 			Square:SetSize(ButtonSize, ButtonSize)
 			Square:SetPoint("TOPLEFT", Moon, "TOPRIGHT", 4, 0)
 			Square.ID = 6
+			RaidUtilities.MakeMarkerButton(Square)
 
 			local Cross = RaidUtilities:CreateBasicButton(self:GetName().."ButtonTargetCross", Icons[4].Icon, "Set "..Icons[4].Icon.." on current target")
-			Cross:SetScript("OnClick", RaidUtilities.SetRaidTarget)
 			Cross:SetSize(ButtonSize, ButtonSize)
 			Cross:SetPoint("TOPLEFT", Square, "TOPRIGHT", 4, 0)
 			Cross.ID = 7
+			RaidUtilities.MakeMarkerButton(Cross)
 
 			local Skull = RaidUtilities:CreateBasicButton(self:GetName().."ButtonTargetSkull", Icons[8].Icon, "Set "..Icons[8].Icon.." on current target")
-			Skull:SetScript("OnClick", RaidUtilities.SetRaidTarget)
 			Skull:SetSize(ButtonSize, ButtonSize)
 			Skull:SetPoint("TOPLEFT", Cross, "TOPRIGHT", 4, 0)
 			Skull.ID = 8
+			RaidUtilities.MakeMarkerButton(Skull)
 		end
 	end
 

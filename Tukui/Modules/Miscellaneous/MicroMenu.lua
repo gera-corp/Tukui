@@ -11,7 +11,8 @@ local RetailMicroButtons = {
 	"CharacterMicroButton",
 	"SpellbookMicroButton",
 	"TalentMicroButton",
-	"AchievementMicroButton",
+	-- No AchievementMicroButton: on Classic realms Blizzard's achievement window
+	-- errors on open (achievement points are nil), leaving the menu stuck.
 	"QuestLogMicroButton",
 	"GuildMicroButton",
 	"LFDMicroButton",
@@ -20,6 +21,22 @@ local RetailMicroButtons = {
 	"MainMenuMicroButton",
 	"HelpMicroButton",
 	"StoreMicroButton",
+}
+
+-- Labels by button name: some buttons are hidden on this client, so labels by
+-- position would drift onto the wrong buttons.
+local RetailLabels = {
+	CharacterMicroButton = "CI",
+	SpellbookMicroButton = "SA",
+	TalentMicroButton = "T&S",
+	QuestLogMicroButton = "QL",
+	GuildMicroButton = "G",
+	LFDMicroButton = "LFG",
+	EJMicroButton = "DJ",
+	CollectionsMicroButton = "C",
+	MainMenuMicroButton = "MM",
+	HelpMicroButton = "HR",
+	StoreMicroButton = "S",
 }
 
 function MicroMenu:HideAlerts()
@@ -35,12 +52,13 @@ do
 	function MicroMenu:ShownMicroButtons()
 		wipe(buttons)
 
-		local Buttons = MICRO_BUTTONS
+		local Buttons = T.Retail and RetailMicroButtons or MICRO_BUTTONS or {}
 
 		for _, name in next, Buttons do
 			local button = _G[name]
 			if T.Retail then
-				if button and button:IsShown() then
+				-- no Adventure Guide on Classic realms: Blizzard's EJ button click calls a nil CanShowEncounterJournal
+				if button and button:IsShown() and not (name == "EJMicroButton" and not CanShowEncounterJournal) then
 					tinsert(buttons, name)
 				end
 			else
@@ -106,6 +124,15 @@ function MicroMenu:Minimalist()
 		UpdateMicroButtonsParent(MicroMenu)
 	end
 
+	-- Blizzard moved every micro button into our menu, hide the ones we left out
+	if T.Retail and AchievementMicroButton then
+		AchievementMicroButton:SetParent(T.Hider)
+	end
+
+	if T.Retail and EJMicroButton and not CanShowEncounterJournal then
+		EJMicroButton:SetParent(T.Hider)
+	end
+
 	for i = 1, NumButtons do
 		local Button = _G[Buttons[i]]
 		local PreviousButton = _G[Buttons[i - 1]]
@@ -127,7 +154,7 @@ function MicroMenu:Minimalist()
 
 		Button.Backdrop.Text = Button.Backdrop:CreateFontString(nil, "OVERLAY")
 		Button.Backdrop.Text:SetFontTemplate(C.Medias.Font, 12)
-		Button.Backdrop.Text:SetText(Texts[i])
+		Button.Backdrop.Text:SetText(T.Retail and RetailLabels[Buttons[i]] or Texts[i])
 		Button.Backdrop.Text:SetPoint("TOP", 0, 7)
 		Button.Backdrop.Text:SetTextColor(1, 1, 1)
 
@@ -171,6 +198,15 @@ function MicroMenu:GameMenu()
 
 	if UpdateMicroButtonsParent then
 		UpdateMicroButtonsParent(MicroMenu)
+	end
+
+	-- Blizzard moved every micro button into our menu, hide the ones we left out
+	if T.Retail and AchievementMicroButton then
+		AchievementMicroButton:SetParent(T.Hider)
+	end
+
+	if T.Retail and EJMicroButton and not CanShowEncounterJournal then
+		EJMicroButton:SetParent(T.Hider)
 	end
 
 	for i = 1, #Buttons do
@@ -227,6 +263,15 @@ function MicroMenu:Blizzard()
 
 	if UpdateMicroButtonsParent then
 		UpdateMicroButtonsParent(MicroMenu)
+	end
+
+	-- Blizzard moved every micro button into our menu, hide the ones we left out
+	if T.Retail and AchievementMicroButton then
+		AchievementMicroButton:SetParent(T.Hider)
+	end
+
+	if T.Retail and EJMicroButton and not CanShowEncounterJournal then
+		EJMicroButton:SetParent(T.Hider)
 	end
 
 	for i = 1, #Buttons do

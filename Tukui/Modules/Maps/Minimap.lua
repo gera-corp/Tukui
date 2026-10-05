@@ -14,6 +14,140 @@ Minimap.ZoneColors = {
 	["contested"] = {1.0, 0.7, 0.0},
 }
 
+-- Minimap middle-click menu. Every entry is a secure button that clicks Blizzard's
+-- own micro button, so windows open through a secure path. Opening them from addon
+-- code tainted them (e.g. casting from the spellbook got blocked).
+local MenuEntries = {
+	{"CharacterMicroButton", "CHARACTER_BUTTON"},
+	{"SpellbookMicroButton", "SPELLBOOK"},
+	{"PlayerSpellsMicroButton", "PLAYERSPELLS_BUTTON"},
+	{"TalentMicroButton", "TALENTS_BUTTON"},
+	{"ProfessionMicroButton", "PROFESSIONS_BUTTON"},
+	{"QuestLogMicroButton", "QUESTLOG_BUTTON"},
+	{"GuildMicroButton", "GUILD"},
+	{"LFDMicroButton", "LFG_TITLE"},
+	{"CollectionsMicroButton", "COLLECTIONS"},
+	{"EJMicroButton", "ENCOUNTER_JOURNAL"},
+	{"MainMenuMicroButton", "MAINMENU_BUTTON"},
+	{"HelpMicroButton", "HELP_BUTTON"},
+}
+
+function Minimap:CreateMenu()
+	local Menu = CreateFrame("Frame", "TukuiMinimapMenu", UIParent)
+
+	Menu:SetFrameStrata("DIALOG")
+	Menu:SetClampedToScreen(true)
+	Menu:CreateBackdrop("Transparent")
+	Menu:CreateShadow()
+	Menu:Hide()
+	Menu.Buttons = {}
+
+	for _, Entry in ipairs(MenuEntries) do
+		local MicroButton = _G[Entry[1]]
+
+		-- no Adventure Guide on Classic realms: Blizzard's EJ button click calls a nil CanShowEncounterJournal
+		if Entry[1] == "EJMicroButton" and not CanShowEncounterJournal then
+			MicroButton = nil
+		end
+
+		if MicroButton then
+			local Button = CreateFrame("Button", nil, Menu, "SecureActionButtonTemplate")
+
+			Button:SetSize(170, 20)
+			Button:RegisterForClicks("AnyUp")
+			Button:SetAttribute("useOnKeyDown", false)
+			Button:SetAttribute("type", "click")
+			Button:SetAttribute("clickbutton", MicroButton)
+			Button.MicroButton = MicroButton
+
+			Button.Text = Button:CreateFontString(nil, "OVERLAY")
+			Button.Text:SetFontTemplate(C.Medias.Font, 12)
+			Button.Text:SetPoint("LEFT", 8, 0)
+			Button.Text:SetText(_G[Entry[2]] or MicroButton.tooltipText or Entry[1])
+
+			Button.Highlight = Button:CreateTexture(nil, "HIGHLIGHT")
+			Button.Highlight:SetAllPoints()
+			Button.Highlight:SetColorTexture(1, 1, 1, 0.15)
+
+			Button:HookScript("OnClick", function()
+				Menu:Hide()
+			end)
+
+			tinsert(Menu.Buttons, Button)
+		end
+	end
+
+	-- The menu holds secure buttons, so it can't be hidden once combat lockdown starts
+	Menu:RegisterEvent("PLAYER_REGEN_DISABLED")
+	Menu:SetScript("OnEvent", function(self, event)
+		if event == "PLAYER_REGEN_DISABLED" then
+			self:Hide()
+		elseif not self:IsMouseOver() and not Minimap:IsMouseOver() then
+			-- GLOBAL_MOUSE_DOWN: click anywhere else closes the menu
+			self:Hide()
+		end
+	end)
+	Menu:SetScript("OnShow", function(self)
+		pcall(self.RegisterEvent, self, "GLOBAL_MOUSE_DOWN")
+	end)
+	Menu:SetScript("OnHide", function(self)
+		pcall(self.UnregisterEvent, self, "GLOBAL_MOUSE_DOWN")
+	end)
+
+	self.Menu = Menu
+end
+
+function Minimap:ToggleMenu()
+	local Menu = self.Menu
+	local Previous
+	local Count = 0
+
+	if not Menu then
+		return
+	end
+
+	if Menu:IsShown() then
+		Menu:Hide()
+
+		return
+	end
+
+	for _, Button in ipairs(Menu.Buttons) do
+		local MicroButton = Button.MicroButton
+
+		Button:ClearAllPoints()
+
+		-- Only list what Blizzard itself shows on this client
+		if MicroButton:IsShown() then
+			if Previous then
+				Button:SetPoint("TOPLEFT", Previous, "BOTTOMLEFT", 0, 0)
+			else
+				Button:SetPoint("TOPLEFT", Menu, "TOPLEFT", 2, -2)
+			end
+
+			if MicroButton:IsEnabled() then
+				Button.Text:SetTextColor(1, 1, 1)
+			else
+				Button.Text:SetTextColor(0.5, 0.5, 0.5)
+			end
+
+			Button:Show()
+			Previous = Button
+			Count = Count + 1
+		else
+			Button:Hide()
+		end
+	end
+
+	local X, Y = GetCursorPosition()
+	local Scale = UIParent:GetEffectiveScale()
+
+	Menu:SetSize(174, Count * 20 + 4)
+	Menu:ClearAllPoints()
+	Menu:SetPoint("TOPRIGHT", UIParent, "BOTTOMLEFT", X / Scale, Y / Scale)
+	Menu:Show()
+end
+
 function Minimap:DisableMinimapElements()
 	local Time = _G["TimeManagerClockButton"]
 	local North = _G["MinimapNorthTag"]
@@ -70,8 +204,6 @@ function Minimap:DisableMinimapElements()
 end
 
 function Minimap:OnMouseClick(button)
-	local MicroMenu = T.Miscellaneous.MicroMenu
-
 	if (button == "RightButton") then
 		if not T.Retail then
 			if MiniMapTrackingDropDown then
@@ -79,16 +211,10 @@ function Minimap:OnMouseClick(button)
 			end
 		end
 	elseif (button == "MiddleButton") then
-		if T.Retail and ExpansionLandingPageMinimapButton and ExpansionLandingPageMinimapButton:IsShown() then
-			if InCombatLockdown() then
-				T.Print("["..GARRISON_MISSIONS_TITLE.."] "..ERR_NOT_IN_COMBAT)
-			else
-				ExpansionLandingPageMinimapButton:ToggleLandingPage()
-			end
+		if InCombatLockdown() then
+			T.Print(ERR_NOT_IN_COMBAT)
 		else
-			if MicroMenu then
-				MicroMenu:Toggle()
-			end
+			Minimap:ToggleMenu()
 		end
 	else
 		if T.Retail then
@@ -169,7 +295,26 @@ function Minimap:StyleMinimap()
 
 		QueueStatusFrame.NineSlice:SetAlpha(0)
 		
-		hooksecurefunc(QueueStatusButton, "SetPoint", function(self) self:SetAllPoints(Holder) end)
+		-- Blizzard re-anchors the button from its micro menu layout; hooking its SetPoint
+		-- breaks that call on this client, so the holder puts it back by polling.
+		local Elapsed = 0
+
+		Holder:SetScript("OnUpdate", function(_, Delta)
+			Elapsed = Elapsed + Delta
+
+			if Elapsed < 0.2 then
+				return
+			end
+
+			Elapsed = 0
+
+			local _, Relative = QueueStatusButton:GetPoint(1)
+
+			if Relative ~= Holder or QueueStatusButton:GetNumPoints() ~= 2 then
+				QueueStatusButton:ClearAllPoints()
+				QueueStatusButton:SetAllPoints(Holder)
+			end
+		end)
 
 		Movers:RegisterFrame(Holder, "TukuiQueueStatusHolder")
 		
@@ -627,6 +772,22 @@ function Minimap:Enable()
 	self:AddHooks()
 	self:EnableMouseWheelZoom()
 	self:MoveTracking()
+	self:CreateMenu()
+
+	-- Forever: Blizzard_PlayerSpells is LoadOnDemand. PlayerSpellsUtil.Toggle*
+	-- call LoadAddOn() inside, which is blocked from a tainted menu context
+	-- (taint dialog). Preload it here (out of combat, untainted) so the talent
+	-- menu item opens the already-loaded frame without a protected LoadAddOn.
+	-- Note: the global LoadAddOn may be nil in Forever; prefer C_AddOns.LoadAddOn.
+	if C_AddOns and C_AddOns.IsAddOnLoaded and not C_AddOns.IsAddOnLoaded("Blizzard_PlayerSpells") then
+		local loader = (C_AddOns and C_AddOns.LoadAddOn) or (type(LoadAddOn) == "function" and LoadAddOn)
+		if loader then
+			local loaded, reason = loader("Blizzard_PlayerSpells")
+			if not loaded then
+				T.Print("Blizzard_PlayerSpells preload failed: " .. tostring(reason))
+			end
+		end
+	end
 end
 
 -- Need to be sized as soon as possible, because of LibDBIcon10

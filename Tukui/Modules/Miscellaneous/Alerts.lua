@@ -9,8 +9,26 @@ function Alerts:UpdateAnchors()
 	AlertFrame:SetPoint("CENTER", Alerts.Holder, "Center", 0, 0)
 end
 
+-- Not a hook on AlertFrame:UpdateAnchors: Blizzard calls it from secure layout code,
+-- and on this client a hooked Blizzard method breaks there. Poll from our holder.
 function Alerts:AddHooks()
-	hooksecurefunc(AlertFrame, "UpdateAnchors", self.UpdateAnchors)
+	local Elapsed = 0
+
+	self.Holder:SetScript("OnUpdate", function(Holder, Delta)
+		Elapsed = Elapsed + Delta
+
+		if Elapsed < 0.2 then
+			return
+		end
+
+		Elapsed = 0
+
+		local Point, Relative = AlertFrame:GetPoint(1)
+
+		if Point ~= "CENTER" or Relative ~= Holder or AlertFrame:GetNumPoints() ~= 1 then
+			Alerts:UpdateAnchors()
+		end
+	end)
 end
 
 function Alerts:AddHolder()

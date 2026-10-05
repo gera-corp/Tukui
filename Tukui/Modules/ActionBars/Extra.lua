@@ -72,6 +72,31 @@ function ActionBars:SetupExtraButton()
 
 	Movers:RegisterFrame(Holder, "Extra Buttons")
 
-	hooksecurefunc("ExtraActionBar_Update", self.DisableExtraButtonTexture)
-	hooksecurefunc(ZoneAbilities, "UpdateDisplayedZoneAbilities", ActionBars.SkinZoneAbilities)
+	-- No hooksecurefunc on ExtraActionBar_Update / ZoneAbilityFrame:UpdateDisplayedZoneAbilities:
+	-- on this client Blizzard's secure code gets nil when calling a function an addon
+	-- hooked ("attempt to call a nil value"), so the Blizzard update never runs.
+	-- Re-skin from our own event frame instead, once Blizzard has updated.
+	local Updater = CreateFrame("Frame")
+	local Pending = false
+
+	local function Update()
+		Pending = false
+
+		ActionBars:DisableExtraButtonTexture()
+		ActionBars:SkinZoneAbilities()
+	end
+
+	Updater:RegisterEvent("PLAYER_ENTERING_WORLD")
+	Updater:RegisterEvent("UPDATE_EXTRA_ACTIONBAR")
+	Updater:RegisterEvent("SPELLS_CHANGED")
+	Updater:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
+	Updater:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+	Updater:RegisterUnitEvent("UNIT_AURA", "player")
+	Updater:SetScript("OnEvent", function()
+		-- Blizzard refreshes zone abilities a frame later (C_Timer.After(0)), wait a bit more
+		if not Pending then
+			Pending = true
+			C_Timer.After(0.2, Update)
+		end
+	end)
 end

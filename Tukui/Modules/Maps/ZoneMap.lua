@@ -23,8 +23,20 @@ function ZoneMap:Skin()
 	Map.IsSkinned = true
 end
 
+-- Not a hook on BattlefieldMapFrame:RefreshAlpha: on this client, hooking a Blizzard
+-- object's method breaks it when Blizzard calls it from secure code. The opacity only
+-- changes from the map's options, so re-apply it from the map's own OnUpdate.
 function ZoneMap:AddHooks()
-	hooksecurefunc(BattlefieldMapFrame, "RefreshAlpha", self.SetMapAlpha)
+	local LastOpacity
+
+	BattlefieldMapFrame:HookScript("OnUpdate", function()
+		local Opacity = BattlefieldMapOptions and BattlefieldMapOptions.opacity
+
+		if Opacity ~= LastOpacity then
+			LastOpacity = Opacity
+			ZoneMap:SetMapAlpha()
+		end
+	end)
 end
 
 function ZoneMap:OnEvent(event, addon)

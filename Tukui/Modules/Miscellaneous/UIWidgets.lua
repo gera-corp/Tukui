@@ -50,8 +50,9 @@ end
 function UIWidgets:Enable()
 	local MinimapWidget = UIWidgetBelowMinimapContainerFrame
 
-	-- Hack to avoid UIWidgetBelowMinimapContainerFrame to move in UIParent.lua (L2987)
-	MinimapWidget.GetNumWidgetsShowing = function() return 0 end
+	-- (Tukui used to override MinimapWidget.GetNumWidgetsShowing here to stop Blizzard
+	-- from moving it. On this client Blizzard's secure layout code can't call functions
+	-- an addon put on its frames, so the holder below puts it back by polling instead.)
 
 	-- Create a widget holder
 	self.Holder = CreateFrame("Frame", "TukuiWidget", UIParent)
@@ -74,8 +75,40 @@ function UIWidgets:Enable()
 		end
 	end
 
-	-- Skin status bars
-	hooksecurefunc(UIWidgetTemplateStatusBarMixin, "Setup", self.SkinUIWidgetStatusBar)
+	-- Skin status bars and keep the containers in our holder. Not a hook on
+	-- UIWidgetTemplateStatusBarMixin.Setup: Blizzard calls Setup from a C_Timer ticker,
+	-- where a hooked method breaks on this client. Poll the containers instead.
+	local Containers = {UIWidgetTopCenterContainerFrame, MinimapWidget, UIWidgetPowerBarContainerFrame}
+	local Elapsed = 0
+
+	self.Holder:SetScript("OnUpdate", function(Holder, Delta)
+		Elapsed = Elapsed + Delta
+
+		if Elapsed < 0.5 then
+			return
+		end
+
+		Elapsed = 0
+
+		local _, Relative = MinimapWidget:GetPoint(1)
+
+		if Relative ~= Holder then
+			MinimapWidget:ClearAllPoints()
+			MinimapWidget:SetPoint("CENTER", Holder)
+		end
+
+		for _, Container in pairs(Containers) do
+			if Container.widgetFrames then
+				for _, Widget in pairs(Container.widgetFrames) do
+					local IsStatusBar = Enum.UIWidgetVisualizationType and Widget.widgetType == Enum.UIWidgetVisualizationType.StatusBar
+
+					if IsStatusBar and Widget.Bar and Widget:IsShown() then
+						UIWidgets.SkinUIWidgetStatusBar(Widget)
+					end
+				end
+			end
+		end
+	end)
 
 	T.Movers:RegisterFrame(self.Holder, "UI Widgets")
 end

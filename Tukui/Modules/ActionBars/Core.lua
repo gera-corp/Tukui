@@ -72,9 +72,10 @@ function ActionBars:DisableBlizzard()
 		BeginActionBarTransition = Noop
 	end
 
-	if C.ActionBars.HotKey then
-		ActionButton_UpdateRangeIndicator = Noop
-	end
+	-- (Tukui used to replace ActionButton_UpdateRangeIndicator with a no-op here. Blizzard's
+	-- action buttons call that global from their OnEvent, so reading an addon-written global
+	-- tainted them, and with taint the button can't apply its (secret) cooldown values:
+	-- "SetCooldown ... Secret values are only allowed during untainted execution".)
 
 	if T.Retail then
 		if not C.ActionBars.AutoAddNewSpell then
@@ -86,17 +87,19 @@ function ActionBars:DisableBlizzard()
 		-- Move Micro Menu
 		if MicroMenuContainer then
 			MicroMenuContainer:SetClampedToScreen(false)
+			MicroMenuContainer:Hide()
+			MicroMenuContainer:UnregisterAllEvents()
 		end
 
 		if BagsBar then
 			BagsBar:SetClampedToScreen(false)
 		end
 
-		MicroButtonAndBagsBar:ClearAllPoints()
-		MicroButtonAndBagsBar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, -200)
+		--MicroButtonAndBagsBar:ClearAllPoints()
+		--MicroButtonAndBagsBar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, -200)
 
 
-		BagsBar:SetAlpha(0)
+		BagsBar:SetAlpha(1)
 
 		-- Tracking Bar Manager
 		StatusTrackingBarManager:SetParent(T.Hider)
@@ -185,6 +188,18 @@ function ActionBars:UpdatePetBar()
 			AutoCastShine_AutoCastStart(ShineTexture)
 		elseif AutoCastShine_AutoCastStop then
 			AutoCastShine_AutoCastStop(ShineTexture)
+		end
+
+		-- Newer clients: a single AutoCastOverlay replaces AutoCastable/AutoCastShine
+		-- (right click on the button toggles autocast, e.g. Growl)
+		local AutoCastOverlay = Button.AutoCastOverlay
+
+		if AutoCastOverlay then
+			AutoCastOverlay:SetShown(AutoCastAllowed and true or false)
+
+			if AutoCastOverlay.ShowAutoCastEnabled then
+				AutoCastOverlay:ShowAutoCastEnabled(AutoCastEnabled and true or false)
+			end
 		end
 
 		if Texture then
@@ -346,6 +361,11 @@ function ActionBars:RangeUpdate(hasrange, inrange)
 	local HasRange = hasrange
 	local InRange = inrange
 
+	-- range / usability can be secret on this client: leave Blizzard's coloring then
+	if issecretvalue and (issecretvalue(IsUsable) or issecretvalue(NotEnoughPower) or issecretvalue(HasRange) or issecretvalue(InRange)) then
+		return
+	end
+
 	if IsUsable then
 		if (HasRange and InRange == false) then
 			Icon:SetVertexColor(0.8, 0.1, 0.1)
@@ -482,6 +502,77 @@ function ActionBars:UpdateButton()
 	end
 end
 
+-- On this client, hooksecurefunc on a Blizzard object's method breaks it: Blizzard's
+-- secure code then gets nil when calling that method ("attempt to call a nil value")
+-- and the Blizzard update never runs. So instead of hooking the buttons' SetPoint, the
+-- bar checks a few times per second (out of combat: protected buttons can't be moved
+-- in combat anyway) and puts back any button Blizzard re-anchored.
+function ActionBars:KeepButtonsOnFakeButtons(Bar, Buttons, FakeButtons)
+	local Elapsed = 0
+
+	Bar:SetScript("OnUpdate", function(_, Delta)
+		Elapsed = Elapsed + Delta
+
+		if Elapsed < 0.2 or InCombatLockdown() then
+			return
+		end
+
+		Elapsed = 0
+
+		for i, Button in pairs(Buttons) do
+			local FakeButton = FakeButtons[i]
+			local _, Relative = Button:GetPoint(1)
+
+			if FakeButton and (Relative ~= FakeButton or Button:GetNumPoints() ~= 2) then
+				Button:ClearAllPoints()
+				Button:SetAllPoints(FakeButton)
+			end
+		end
+	end)
+end
+
+-- Hotkey text restyling, driven by events instead of hooking Button:UpdateHotkeys
+-- (Blizzard calls it from ActionButton:Update, also on bar paging in combat).
+ActionBars.HotKeyButtons = {}
+
+function ActionBars:UpdateAllHotKeys()
+	for Button in pairs(ActionBars.HotKeyButtons) do
+		ActionBars.SetHotKeyText(Button)
+	end
+end
+
+function ActionBars:RegisterHotKeyButton(Button)
+	if not ActionBars.HotKeyUpdater then
+		local Updater = CreateFrame("Frame")
+		local Pending = false
+
+		local function Update()
+			Pending = false
+			ActionBars:UpdateAllHotKeys()
+		end
+
+		Updater:RegisterEvent("PLAYER_ENTERING_WORLD")
+		Updater:RegisterEvent("UPDATE_BINDINGS")
+		Updater:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
+		Updater:RegisterEvent("ACTIONBAR_PAGE_CHANGED")
+		Updater:RegisterEvent("UPDATE_BONUS_ACTIONBAR")
+		Updater:RegisterEvent("UPDATE_VEHICLE_ACTIONBAR")
+		Updater:RegisterEvent("UPDATE_OVERRIDE_ACTIONBAR")
+		Updater:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
+		Updater:SetScript("OnEvent", function()
+			-- Let Blizzard write its own hotkey text first
+			if not Pending then
+				Pending = true
+				C_Timer.After(0, Update)
+			end
+		end)
+
+		ActionBars.HotKeyUpdater = Updater
+	end
+
+	ActionBars.HotKeyButtons[Button] = true
+end
+
 function ActionBars:AddHooks()
 	if T.Retail then
 		-- FIX ME
@@ -500,7 +591,7 @@ function ActionBars:AddHooks()
 		end
 	end
 
-	if C.ActionBars.ProcAnim then
+	if C.ActionBars.ProcAnim and type(ActionButton_ShowOverlayGlow) == "function" then
 		hooksecurefunc("ActionButton_ShowOverlayGlow", self.StartHighlight)
 		hooksecurefunc("ActionButton_HideOverlayGlow", self.StopHightlight)
 	end

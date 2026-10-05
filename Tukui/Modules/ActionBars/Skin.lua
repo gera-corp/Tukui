@@ -108,7 +108,7 @@ function ActionBars:SkinButton(button)
 
 		if C.ActionBars.HotKey then
 			if T.Retail and Button.UpdateHotkeys then
-				hooksecurefunc(Button, "UpdateHotkeys", ActionBars.SetHotKeyText)
+				ActionBars:RegisterHotKeyButton(Button)
 			end
 
 			ActionBars.SetHotKeyText(Button)
