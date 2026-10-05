@@ -3,31 +3,51 @@ local T, C, L = unpack((select(2, ...)))
 local DataText = T["DataTexts"]
 local ClassColor = T.RGBToHex(unpack(T.Colors.class[T.MyClass]))
 
+-- 1000 = "no durability" placeholder (empty slot, or not known yet right after login)
+local NoDurability = 1000
+
+-- Tukui has no Russian locale: use Blizzard's localized slot names
+local SlotNames = {
+	[1] = HEADSLOT, [3] = SHOULDERSLOT, [5] = CHESTSLOT, [6] = WAISTSLOT, [7] = LEGSSLOT, [8] = FEETSLOT,
+	[9] = WRISTSLOT, [10] = HANDSSLOT, [16] = MAINHANDSLOT, [17] = SECONDARYHANDSLOT, [18] = RANGEDSLOT,
+}
+
+for _, Slot in ipairs(L.DataText.Slots) do
+	Slot[2] = SlotNames[Slot[1]] or Slot[2]
+end
+
+local function GetLowestDurability()
+	local Lowest = L.DataText.Slots[1][3]
+
+	return Lowest < NoDurability and floor(Lowest * 100) or 100
+end
+
 local Update = function(self)
-	local Total = 0
-	local Current, Max
-
 	for i = 1, 11 do
-		if (GetInventoryItemLink("player", L.DataText.Slots[i][1]) ~= nil) then
-			Current, Max = GetInventoryItemDurability(L.DataText.Slots[i][1])
+		local Slot = L.DataText.Slots[i]
+		local Current, Max = GetInventoryItemDurability(Slot[1])
 
-			if Current then
-				L.DataText.Slots[i][3] = Current / Max
-
-				Total = Total + 1
-			end
+		-- reset every time: unequipped items used to keep their old value
+		if Current and Max and Max > 0 then
+			Slot[3] = Current / Max
+		else
+			Slot[3] = NoDurability
 		end
 	end
 
 	table.sort(L.DataText.Slots, function(a, b) return a[3] < b[3] end)
-	local durability = floor(L.DataText.Slots[1][3] * 100)
+	local durability = GetLowestDurability()
 	local r, g, b = T.ColorGradient(durability, 100, 0.8, 0, 0, 0.8, 0.8, 0, 0, 0.8, 0)
 
-	self.Text:SetFormattedText("Durability |cff%02x%02x%02x%s%%|r", r * 255, g * 255, b * 255, durability)
+	self.Text:SetFormattedText("%s |cff%02x%02x%02x%s%%|r", DURABILITY or "Durability", r * 255, g * 255, b * 255, durability)
 end
 
 local OnEnter = function(self)
-	PaperDollFrame_UpdateStats()
+	-- (Retail tooltip reads the stats itself; calling Blizzard's PaperDollFrame_UpdateStats
+	-- from addon code would taint the character frame)
+	if not T.Retail and PaperDollFrame_UpdateStats then
+		PaperDollFrame_UpdateStats()
+	end
 
 	GameTooltip:SetOwner(self:GetTooltipAnchor())
 	GameTooltip:ClearLines()
@@ -90,10 +110,10 @@ local OnEnter = function(self)
 	end
 
 	-- Display durability
-	GameTooltip:AddDoubleLine("|CFFFF8000"..DURABILITY..":|r", floor(L.DataText.Slots[1][3] * 100).."%")
+	GameTooltip:AddDoubleLine("|CFFFF8000"..DURABILITY..":|r", GetLowestDurability().."%")
 
 	for i = 1, 11 do
-		if (L.DataText.Slots[i][3] ~= 1000) then
+		if (L.DataText.Slots[i][3] ~= NoDurability) then
 			local Green, Red
 
 			Green = L.DataText.Slots[i][3] * 2
@@ -120,6 +140,7 @@ local Enable = function(self)
 	self:RegisterEvent("MERCHANT_SHOW")
 	self:RegisterEvent("PLAYER_ENTERING_WORLD")
 	self:RegisterEvent("UPDATE_INVENTORY_DURABILITY")
+	self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 	self:SetScript("OnEvent", Update)
 	self:SetScript("OnEnter", OnEnter)
 	self:SetScript("OnLeave", GameTooltip_Hide)

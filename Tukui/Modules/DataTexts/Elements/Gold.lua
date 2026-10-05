@@ -98,7 +98,9 @@ local Enable = function(self)
 	self:RegisterEvent("PLAYER_TRADE_MONEY")
 	self:RegisterEvent("TRADE_MONEY_CHANGED")
 	self:RegisterEvent("PLAYER_ENTERING_WORLD")
-	self:SetScript("OnMouseDown", OnMouseDown)
+	-- No click-to-open-bags: ToggleAllBags() from addon code taints Blizzard's bag state,
+	-- and the bank opens the bags too (buying a bank tab got blocked). A secure overlay
+	-- isn't possible either: it makes the datatext protected, which breaks its anchoring.
 	self:SetScript("OnEnter", OnEnter)
 	self:SetScript("OnLeave", GameTooltip_Hide)
 	self:SetScript("OnEvent", Update)

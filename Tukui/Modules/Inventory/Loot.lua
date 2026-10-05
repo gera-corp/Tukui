@@ -299,10 +299,23 @@ function Loot:LOOT_OPENED(_, autoloot)
 		CloseLoot(not autoLoot)
 	end
 
+	-- Target info can be secret on this client: it can be displayed, but not tested or cut
+	local IsSecret = function(Value)
+		return issecretvalue and issecretvalue(Value)
+	end
+
+	local IsFriend, IsDead = UnitIsFriend("player", "target"), UnitIsDead("target")
+	local Name = UnitName("target")
+
 	if IsFishingLoot() then
 		TukuiLootFrame.Title:SetText("Fishy Loot")
-	elseif not UnitIsFriend("player", "target") and UnitIsDead("target") then
-		TukuiLootFrame.Title:SetText(UnitName("target"):sub(1, 29))
+	elseif not IsSecret(IsFriend) and not IsSecret(IsDead) and not IsFriend and IsDead and Name then
+		if IsSecret(Name) then
+			TukuiLootFrame.Title:SetText(Name)
+		else
+			-- cut by letters, not bytes: Name:sub(1, 29) split Cyrillic letters in half
+			TukuiLootFrame.Title:SetText(T["UnitFrames"].UTF8Sub(Name, 22, true))
+		end
 	else
 		TukuiLootFrame.Title:SetText(LOOT)
 	end

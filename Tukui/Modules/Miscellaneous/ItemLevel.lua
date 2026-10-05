@@ -3,6 +3,8 @@ local T, C, L = unpack((select(2, ...)))
 local Miscellaneous = T["Miscellaneous"]
 local ItemLevel = CreateFrame("Frame")
 local GetItemQualityColor = (C_Item and C_Item.GetItemQualityColor) or GetItemQualityColor
+-- no global GetDetailedItemLevelInfo on this client
+local GetDetailedItemLevelInfo = (C_Item and C_Item.GetDetailedItemLevelInfo) or GetDetailedItemLevelInfo
 
 function ItemLevel:Update()
 	if not self then
@@ -25,11 +27,13 @@ function ItemLevel:Update()
 		local Level, Rarity
 
 		if IsTarget then
-			local ItemLink = GetInventoryItemLink("target", SlotID)
+			-- the inspected unit isn't always the target (e.g. inspect from a raid frame)
+			local Unit = InspectFrame and InspectFrame.unit or "target"
+			local ItemLink = GetInventoryItemLink(Unit, SlotID)
 
-			if ItemLink then
+			if ItemLink and GetDetailedItemLevelInfo then
 				Level = GetDetailedItemLevelInfo(ItemLink)
-				Rarity = GetInventoryItemQuality("target", SlotID)
+				Rarity = GetInventoryItemQuality(Unit, SlotID)
 			end
 		else
 			local Button = Item:CreateFromEquipmentSlot(SlotID)
