@@ -24,6 +24,7 @@ Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
 Libs\LibAnim\LibAnim.lua
 Libs\LibDeflate\LibDeflate.lua
 Libs\LibSerialize\LibSerialize.lua
+Libs\SortBags_Vanilla\SortBags.lua
 Libs\oUF_Retail\init.lua
 Libs\oUF_Retail\private.lua
 Libs\oUF_Retail\ouf.lua
@@ -162,12 +163,14 @@ Modules\Miscellaneous\Alerts.lua
 Modules\Miscellaneous\AFK.lua
 Modules\Miscellaneous\AltPowerBar.lua
 Modules\Miscellaneous\DeathRecap.lua
+Modules\Miscellaneous\DamageMeter.lua
 Modules\Miscellaneous\DropDown.lua
 Modules\Miscellaneous\Durability.lua
 Modules\Miscellaneous\Errors.lua
 Modules\Miscellaneous\ExperienceBar.lua
 Modules\Miscellaneous\GameMenu.lua
 Modules\Miscellaneous\GarbageCollection.lua
+Modules\Miscellaneous\TimerBars.lua
 Modules\Miscellaneous\Ghost.lua
 Modules\Miscellaneous\Grid.lua
 Modules\Miscellaneous\ItemLevel.lua

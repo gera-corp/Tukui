@@ -3,7 +3,7 @@ local oUF = ns.oUF
 
 local GetComboPoints = GetComboPoints
 local MaxComboPts = 7
-local Retail = WOW_PROJECT_ID == WOW_PROJECT_MAINLINE
+local Retail = WOW_PROJECT_ID == WOW_PROJECT_MAINLINE or (WOW_PROJECT_CAMELOT and WOW_PROJECT_ID == WOW_PROJECT_CAMELOT) -- WoW Forever
 local BCC = WOW_PROJECT_ID == WOW_PROJECT_BURNING_CRUSADE_CLASSIC
 local Classic = WOW_PROJECT_ID == WOW_PROJECT_CLASSIC
 

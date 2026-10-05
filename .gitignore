@@ -26,6 +26,8 @@ Tukui/Libs/*
 !Tukui/Libs/oUF_Retail
 !Tukui/Libs/oUF_SoulShards
 !Tukui/Libs/oUF_Trinkets
+# patched for WoW Forever, kept in the repo instead of an external
+!Tukui/Libs/SortBags_Vanilla
 
 # Pipelines
 .release
