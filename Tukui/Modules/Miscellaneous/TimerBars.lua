@@ -8,7 +8,7 @@ local TimerBars = CreateFrame("Frame")
 -- combat on this client, so casts are what we can rely on):
 -- * Summon Hawk (Forever hunter talent): temporary hawks, at most 2 alive, a 3rd
 --   cast replaces the oldest one. Shown in their own group at the bottom.
--- * Any other harmful spell whose tooltip has a duration ("на 15 сек.", "на 2 мин."):
+-- * Any other harmful spell whose tooltip has a duration ("for 15 sec", "for 2 min"):
 --   stings, marks, DoTs, crowd control... Grouped by mob (up to 5 mobs, the mob
 --   name on top), one bar per spell, restarted on recast. Spells that live on one
 --   mob only (Hunter's Mark) move to the new mob. The current target's group is
@@ -75,6 +75,17 @@ local function ToNumber(text)
 	return text and tonumber((text:gsub(",", ".")))
 end
 
+-- Localized "sec"/"min" words, taken from Blizzard's own duration strings
+-- (SPELL_DURATION_SEC is "%.2f sec" on enUS), so other client languages work too
+local function GetUnitWord(Format, Fallback)
+	local Word = type(Format) == "string" and Format:match("%%[%d%.]*[fd]%s*([^%s%.%d]+)")
+
+	return Word or Fallback
+end
+
+local SecondsWord = GetUnitWord(SPELL_DURATION_SEC, "sec")
+local MinutesWord = GetUnitWord(SPELL_DURATION_MIN, "min")
+
 -- Duration from the spell tooltip, nil if it doesn't mention one
 local function GetDuration(spellID)
 	local Description = C_Spell.GetSpellDescription and C_Spell.GetSpellDescription(spellID)
@@ -83,10 +94,10 @@ local function GetDuration(spellID)
 		return
 	end
 
-	local Seconds = ToNumber(Description:match("(%d+[%.,]?%d*)%s*сек") or Description:match("(%d+[%.,]?%d*)%s*sec"))
+	local Seconds = ToNumber(Description:match("(%d+[%.,]?%d*)%s*"..SecondsWord) or Description:match("(%d+[%.,]?%d*)%s*sec"))
 
 	if not Seconds then
-		local Minutes = ToNumber(Description:match("(%d+[%.,]?%d*)%s*мин") or Description:match("(%d+[%.,]?%d*)%s*min"))
+		local Minutes = ToNumber(Description:match("(%d+[%.,]?%d*)%s*"..MinutesWord) or Description:match("(%d+[%.,]?%d*)%s*min"))
 
 		Seconds = Minutes and Minutes * 60
 	end

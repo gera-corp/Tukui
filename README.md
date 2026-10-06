@@ -8,7 +8,6 @@ stricter taint checks, Blizzard's aura containers, a new loot history API and mo
 load there (the client only accepts `*-Camelot.toc`) and throws a lot of errors once it does. This fork
 fixes that.
 
-*Русская версия ниже.*
 
 > This is not an official Tukui release and is not supported by the Tukui team.
 > Please don't report problems of this fork to the original authors — open an issue here instead.
@@ -67,44 +66,3 @@ Blizzard UI source for this client: [Gethe/wow-ui-source, branch `forever`](http
 Tukui is made by Tukz and the Tukui team — [tukui.org](https://www.tukui.org). All credit for the UI goes
 to them. oUF and other bundled libraries belong to their authors (see `Tukui/Licenses`).
 This fork only contains compatibility changes for WoW Forever. The original Tukui license applies.
-
----
-
-# Tukui для WoW Forever (русский)
-
-**Неофициальный форк** [Tukui](https://github.com/tukui-org/Tukui) (на основе **v20.463**) для клиента
-**WoW Forever** (`wow_classic_beta`, клиент **1.60.1**, тип игры *Camelot*, интерфейс **16001**).
-
-Оригинальный Tukui на этом клиенте не загружается, а после загрузки сыпет ошибками: новый движок с
-секретными значениями, строгими проверками заражения (taint), контейнерами аур Blizzard и т.д.
-Этот форк это исправляет. Команда Tukui его не поддерживает — пожалуйста, пишите о проблемах сюда, а не
-авторам оригинала.
-
-## Установка
-
-1. Скачайте `Tukui-<версия>.zip` в разделе [Releases](../../releases).
-2. Удалите старую папку `Interface\AddOns\Tukui`.
-3. Распакуйте архив в `World of Warcraft\_classic_beta_\Interface\AddOns\`.
-4. Полностью перезапустите игру (`/reload` недостаточно).
-
-## Ошибки и пожелания — приветствуются
-
-Нашли ошибку? [Создайте issue](../../issues/new) и по возможности укажите:
-
-- сборку клиента (например, `1.60.1.70170`) и версию Tukui из списка аддонов;
-- полный текст ошибки Lua (со *Stack* и *Locals*); включить показ ошибок: `/console scriptErrors 1`;
-- что вы делали перед ошибкой, скриншот, если проблема визуальная;
-- для «Модификация Tukui заблокирована»: `/console taintLog 2`, повторите ошибку, выйдите из игры и
-  приложите кусок `Logs\taint.log` вокруг заблокированного действия;
-- какие ещё аддоны стоят (Questie, DBM и т.п.).
-
-Идеи и предложения тоже пишите в issues.
-
-## Хотите помочь — добро пожаловать!
-
-Будем рады любой помощи: исправления, тестирование на других классах, переводы, идеи.
-Сделайте форк, ветку от `forever` и pull request с описанием: что было сломано и как вы проверили
-исправление в игре. Правила для этого клиента — в английском разделе выше (*Want to help?*).
-
-Tukui создан Tukz и командой Tukui — [tukui.org](https://www.tukui.org). Действует лицензия оригинального
-Tukui.

@@ -910,8 +910,8 @@ end
 
 -- Whispers to "FirstName LastName" characters with a Cyrillic last name. Blizzard's
 -- whisper parser only recognizes the last name with the Lua pattern %w, which doesn't
--- match Cyrillic letters, so "/w Имя Фамилия" (also what clicking a name in chat types)
--- whispered "Имя" with "Фамилия" as the text. Full names seen in chat (or known to
+-- match Cyrillic letters, so "/w FirstName LastName" with a Cyrillic last name (also what
+-- clicking a name in chat types) whispered FirstName with LastName as the text. Full names seen in chat (or known to
 -- autocomplete) are turned into the whisper target here.
 local WhisperNames = {}
 local WhisperSlash

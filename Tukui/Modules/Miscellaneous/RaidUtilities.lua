@@ -81,7 +81,7 @@ end
 
 -- Blizzard's DISBAND_RAID dialog doesn't exist on this client anymore: own confirmation
 T.Popups.Popup["TUKUI_DISBAND_GROUP"] = {
-	Question = GetLocale() == "ruRU" and "Распустить группу? Все участники будут исключены." or "Disband the group? All members will be removed.",
+	Question = "Disband the group? All members will be removed.",
 	Answer1 = ACCEPT,
 	Answer2 = CANCEL,
 	Function1 = function()

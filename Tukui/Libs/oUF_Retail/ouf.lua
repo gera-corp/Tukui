@@ -810,9 +810,9 @@ function oUF:SpawnNamePlates(namePrefix, nameplateCallback, nameplateCVars)
 			local nameplate = C_NamePlate.GetNamePlateForUnit(unit)
 			if(not nameplate) then return end
 
-			-- Скрываем Blizzard nameplate (чёрная полоска с уровнем).
-			-- hooksecurefunc(NamePlateDriverFrame, 'AcquireUnitFrame') может
-			-- не срабатывать в Forever, поэтому вызываем явно.
+			-- Hide Blizzard's nameplate unit frame (the black bar with the level).
+			-- There's no hook on NamePlateDriverFrame.AcquireUnitFrame on Forever
+			-- (see above), so it's done explicitly here.
 			self:DisableNamePlate(nameplate)
 
 			if(not nameplate.unitFrame) then

@@ -241,7 +241,7 @@ end
 -- The player name can still be "Unknown" when Tukui files load (Init.lua), which
 -- makes the whole session read/write settings under an "Unknown" character.
 local IsUnknownName = function(Name)
-	return not Name or Name == "" or Name == UNKNOWNOBJECT or Name == UKNOWNBEING or Name == "Unknown" or Name == "Неизвестно"
+	return not Name or Name == "" or Name == UNKNOWNOBJECT or Name == UKNOWNBEING or Name == "Unknown"
 end
 
 function Loading:UpdatePlayerName()
@@ -259,7 +259,7 @@ function Loading:UpdatePlayerName()
 	return not IsUnknownName(T.MyName)
 end
 
--- Settings saved while the name was still unknown ended up under fake "Unknown"/"Неизвестно"
+-- Settings saved while the name was still unknown ended up under fake "Unknown" (UNKNOWNOBJECT)
 -- characters: move them to the real character (without overriding its own values), once.
 function Loading:MergeUnknownCharacters()
 	if IsUnknownName(T.MyName) or not TukuiDatabase or not TukuiDatabase.Settings then

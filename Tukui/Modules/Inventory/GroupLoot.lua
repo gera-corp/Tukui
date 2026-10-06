@@ -562,10 +562,9 @@ end
 
 -- Roll tracker bars: the roll stays visible after our choice, with the counts, the timer
 -- and finally the winner.
-local Ru = GetLocale() == "ruRU"
-local TextWinner = Ru and "Досталось:" or "Won by:"
-local TextAllPassed = Ru and "Все отказались" or "Everyone passed"
-local TextEnded = Ru and "Розыгрыш окончен" or "Roll ended"
+local TextWinner = "Won by:"
+local TextAllPassed = "Everyone passed"
+local TextEnded = "Roll ended"
 local TypeIcons = {
 	Need = "lootroll-toast-icon-need-up",
 	Greed = "lootroll-toast-icon-greed-up",
