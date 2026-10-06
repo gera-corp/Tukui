@@ -163,7 +163,14 @@ function UnitFrames:Highlight()
 		return
 	end
 
-	if UnitIsUnit("target", self.unit) then
+	local IsTarget = UnitIsUnit("target", self.unit)
+
+	-- secret for some units on this client: treat as "not the target"
+	if issecretvalue and issecretvalue(IsTarget) then
+		IsTarget = false
+	end
+
+	if IsTarget then
 		if self.Highlight then
 			Highlight:Show()
 		else

@@ -146,7 +146,7 @@ T.SlashHandler = function(cmd)
 			T.Popups.ShowPopup("RESETUI")
 		end
 	elseif (arg1 == "load" or arg1 == "unload") then
-		local Loaded, Reason = LoadAddOn(arg2)
+		local Loaded, Reason = ((C_AddOns and C_AddOns.LoadAddOn) or LoadAddOn)(arg2)
 
 		if (Reason == "MISSING") then
 			T.Print("["..arg2.."] is not installed")

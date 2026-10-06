@@ -13,6 +13,9 @@ local ZoneColors = {
 	["else"] = {1.0, 0.9294, 0.7607}
 }
 
+-- moved to C_PvP on modern clients
+local GetZonePVPInfo = (C_PvP and C_PvP.GetZonePVPInfo) or GetZonePVPInfo
+
 local Update = function(self)
 	local Text = GetMinimapZoneText()
 	local PVPType = GetZonePVPInfo()
@@ -24,9 +27,8 @@ local Update = function(self)
 		Color = ZoneColors["else"]
 	end
 
-	if (Text:len() > 18) then
-		Text = strsub(Text, 1, 12) .. "..."
-	end
+	-- cut by letters, not bytes (strsub split multi-byte letters, e.g. Cyrillic zone names)
+	Text = T["UnitFrames"].UTF8Sub(Text, 15, true)
 
 	self.Text:SetText(Text)
 	self.Text:SetTextColor(Color[1], Color[2], Color[3])

@@ -2,6 +2,10 @@ local T, C, L = unpack((select(2, ...)))
 
 local DataText = T["DataTexts"]
 local Popups = T["Popups"]
+
+-- IsChatAFK/IsChatDND are gone on modern clients
+local IsChatAFK = IsChatAFK or function() return UnitIsAFK("player") end
+local IsChatDND = IsChatDND or function() return UnitIsDND("player") end
 local BattleNetTable = {}
 local FriendsTable = {}
 local Games = {

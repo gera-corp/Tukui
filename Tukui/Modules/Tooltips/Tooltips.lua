@@ -62,7 +62,7 @@ function Tooltip:GetTextColor(unit)
 		return Hex, Color.r, Color.g, Color.b
 	else
 		local Reaction = UnitReaction(unit, "player")
-		local Color = T.Colors.reaction[Reaction]
+		local Color = not (issecretvalue and issecretvalue(Reaction)) and Reaction and T.Colors.reaction[Reaction]
 
 		if (not Color) then
 			return
@@ -175,14 +175,18 @@ function Tooltip:OnTooltipSetUnit()
 		local UnitTarget = Unit.."target"
 		local Class = select(2, UnitClass(UnitTarget))
 		local Reaction = UnitReaction(UnitTarget, "player")
-		local R, G, B
+		local IsPlayer = UnitIsPlayer(UnitTarget)
+		local R, G, B = 1, 1, 1
 
-		if (UnitIsPlayer(UnitTarget)) then
+		-- target-of-target info can be secret: no boolean tests or table lookups with it
+		if IsSecret(IsPlayer) or IsSecret(Class) then
+			IsPlayer = false
+		end
+
+		if IsPlayer and Class and T.Colors.class[Class] then
 			R, G, B = unpack(T.Colors.class[Class])
-		elseif Reaction then
+		elseif Reaction and not IsSecret(Reaction) and T.Colors.reaction[Reaction] then
 			R, G, B = unpack(T.Colors.reaction[Reaction])
-		else
-			R, G, B = 1, 1, 1
 		end
 
 		GameTooltip:AddLine(" ")

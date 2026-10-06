@@ -758,15 +758,23 @@ function Chat:Setup()
 	VoiceChatPromptActivateChannel.AcceptButton:SkinButton()
 	VoiceChatPromptActivateChannel.CloseButton:SkinCloseButton()
 	VoiceChatPromptActivateChannel:SetPoint(unpack(Chat.VoiceAlertPosition))
-	VoiceChatPromptActivateChannel.ClearAllPoints = Noop
-	VoiceChatPromptActivateChannel.SetPoint = Noop
+
+	-- Clients with secret values: addon values written into Blizzard frames/tables that
+	-- Blizzard's chat code reads taint it (see ShortChannelNames above), so no method
+	-- overrides there and sticky flags are only written when they actually change.
+	if not issecretvalue then
+		VoiceChatPromptActivateChannel.ClearAllPoints = Noop
+		VoiceChatPromptActivateChannel.SetPoint = Noop
+	end
 
 	-- Remember last channel
-	ChatTypeInfo.WHISPER.sticky = 1
-	ChatTypeInfo.BN_WHISPER.sticky = 1
-	ChatTypeInfo.OFFICER.sticky = 1
-	ChatTypeInfo.RAID_WARNING.sticky = 1
-	ChatTypeInfo.CHANNEL.sticky = 1
+	for _, ChatType in ipairs({"WHISPER", "BN_WHISPER", "OFFICER", "RAID_WARNING", "CHANNEL"}) do
+		local Info = ChatTypeInfo[ChatType]
+
+		if Info and Info.sticky ~= 1 then
+			Info.sticky = 1
+		end
+	end
 
 	-- Enable nicknames classcolor
 	SetCVar("chatClassColorOverride", 0)
@@ -1065,10 +1073,13 @@ function Chat:Enable()
 		self.SetChatFont(ChatFrame)
 	end
 
-	FCF_UpdateButtonSide = function() end
+	-- (not on clients with secret values: Blizzard's chat code calls these globals)
+	if not issecretvalue then
+		FCF_UpdateButtonSide = function() end
 
-	FCF_ToggleLock = self.LockChat
-	FCF_ToggleLockOnDockedFrame = self.LockChat
+		FCF_ToggleLock = self.LockChat
+		FCF_ToggleLockOnDockedFrame = self.LockChat
+	end
 
 	if (not C.Chat.WhisperSound) then
 		return

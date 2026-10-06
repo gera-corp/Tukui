@@ -37,6 +37,12 @@ function ThreatBar:OnUpdate(elapsed)
 
 	if UnitAffectingCombat("player") then
 		local _, _, ThreatPercent = UnitDetailedThreatSituation("player", "target")
+
+		-- threat can be secret on this client: can't be compared or rounded
+		if issecretvalue and issecretvalue(ThreatPercent) then
+			ThreatPercent = nil
+		end
+
 		local ThreatValue = ThreatPercent or 0
 		local Text = self.Text
 		local Title = self.Title
