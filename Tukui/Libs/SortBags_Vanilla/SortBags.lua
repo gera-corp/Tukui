@@ -162,18 +162,36 @@ do
 
 	local suspended
 
+	-- /run SortBagsDebug = true  prints what the sort is doing
+	local function Debug(...)
+		if _G.SortBagsDebug then
+			print("|cff00ff96SortBags:|r", ...)
+		end
+	end
+
 	function Start()
+		Debug("start, containers:", unpack(CONTAINERS))
 		process = coroutine.create(function()
+			local waits = 0
 			while not Initialize() do
+				waits = waits + 1
+				if waits % 60 == 1 then
+					Debug("waiting: an item in the bags is locked")
+				end
 				coroutine.yield()
 			end
+			Debug("model built,", #model, "slots")
+			local rounds = 0
 			while true do
 				suspended = false
 				if InCombatLockdown() then
+					Debug("stopped: in combat")
 					return
 				end
 				local complete = Sort()
+				rounds = rounds + 1
 				if complete then
+					Debug("done after", rounds, "round(s)")
 					return
 				end
 				Stack()
@@ -188,7 +206,11 @@ do
 	f:SetScript('OnUpdate', function(_, arg1)
 		if coroutine.status(process) == 'suspended' then
 			suspended = true
-			coroutine.resume(process)
+			-- errors inside the coroutine were swallowed silently: report them
+			local ok, err = coroutine.resume(process)
+			if not ok then
+				geterrorhandler()(err)
+			end
 		end
 		if coroutine.status(process) == 'dead' then
 			f:Hide()

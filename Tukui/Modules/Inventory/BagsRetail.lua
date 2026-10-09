@@ -383,7 +383,21 @@ function Bags.ItemLevel(Button)
 	end
 end
 
+-- Blizzard bug (WoW Forever 1.60.1.70170): the gamepad bag bar parented to the combined bag is
+-- meant to be hidden without the gamepad UI, but GamepadBagBar:GetBagButton() returns nil then,
+-- so nothing hides it and its backpack button covers the sort button.
+local function HideGamepadBagBar()
+	local Bar = _G.GamepadBagBar
+
+	if Bar and Bar:IsShown() and not (InputUtil and InputUtil.IsGamepadUIEnabled and InputUtil.IsGamepadUIEnabled()) then
+		Bar:Hide()
+	end
+end
+
 function Bags:UpdateItems()
+	-- (see HideGamepadBagBar)
+	HideGamepadBagBar()
+
 	for i, Button in self:EnumerateValidItems() do
 		-- Buttons for newly equipped bags are created after login, skin them here
 		Bags:SkinButton(Button)
@@ -577,6 +591,7 @@ function Bags:Enable()
 	-- Start doing shit
 	self:AddHooks()
 	self:SkinContainer()
+	HideGamepadBagBar()
 
 	Movers:RegisterFrame(ContainerFrameCombinedBags, "Bags")
 	
