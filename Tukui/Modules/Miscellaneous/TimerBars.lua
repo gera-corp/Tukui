@@ -44,6 +44,13 @@ local BAR_SPACING = 3
 local GROUP_SPACING = 8
 local CLEAR_DELAY = 0.3
 
+-- A debuff that didn't land: the target answers our cast with one of these UNIT_COMBAT
+-- events (the "Immune" / "Resist" combat text). Misses, dodges and parries aren't
+-- used: the pet's melee produces them all the time on the same target.
+local NOT_APPLIED = {IMMUNE = true, RESIST = true, EVADE = true, REFLECT = true}
+-- How long after the cast such an event still belongs to it (projectile travel time)
+local NOT_APPLIED_WINDOW = 1.5
+
 -- Size and font come from the Tukui settings (Misc > Timer Bars), read on Enable
 local BarWidth, BarHeight, HeaderHeight, FontPath, FontSize, FontFlag
 
@@ -436,8 +443,13 @@ function TimerBars:OnCast(spellID)
 			table.remove(Group.Timers, 1)
 		end
 
-		table.insert(Group.Timers, {Name = Name, Icon = Icon, Color = DEBUFF_COLOR, Duration = Duration, Expires = Now + Duration})
+		local Timer = {Name = Name, Icon = Icon, Color = DEBUFF_COLOR, Duration = Duration, Expires = Now + Duration}
+
+		table.insert(Group.Timers, Timer)
 		Group.LastUsed = Now
+
+		-- remembered until the target confirms or refuses it (see OnCombatText)
+		self.LastDebuff = {Group = Group, Timer = Timer, TargetID = self.TargetID, At = Now}
 
 		Debug("cast", Name, "on target id", Group.TargetID, "guid", Group.GUID and "known" or "secret or none", "plate", Group.Plate or "not found")
 	else
@@ -483,8 +495,37 @@ function TimerBars:OnPlateRemoved(unit)
 	end
 end
 
+-- The target was immune to (or resisted, evaded, reflected) our last debuff: drop its bar
+function TimerBars:OnCombatText(action)
+	local Last = self.LastDebuff
+
+	if not Last or not NotSecret(action) or not NOT_APPLIED[action] then
+		return
+	end
+
+	self.LastDebuff = nil
+
+	if Last.TargetID ~= self.TargetID or GetTime() - Last.At > NOT_APPLIED_WINDOW then
+		return
+	end
+
+	for i, Timer in ipairs(Last.Group.Timers) do
+		if Timer == Last.Timer then
+			table.remove(Last.Group.Timers, i)
+			break
+		end
+	end
+
+	Debug("not applied:", action, Last.Timer.Name)
+
+	self:Refresh()
+end
+
 function TimerBars:OnEvent(event, unit, castGUID, spellID)
-	if event == "PLAYER_TARGET_CHANGED" then
+	if event == "UNIT_COMBAT" then
+		-- (unit, action, ...): castGUID holds the action here
+		self:OnCombatText(castGUID)
+	elseif event == "PLAYER_TARGET_CHANGED" then
 		self:OnTargetChanged()
 	elseif event == "NAME_PLATE_UNIT_ADDED" then
 		self:OnPlateAdded(unit)
@@ -548,6 +589,7 @@ function TimerBars:Enable()
 
 	self:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
 	self:RegisterEvent("PLAYER_TARGET_CHANGED")
+	self:RegisterUnitEvent("UNIT_COMBAT", "target")
 	self:RegisterEvent("NAME_PLATE_UNIT_ADDED")
 	self:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
 	self:SetScript("OnEvent", self.OnEvent)
