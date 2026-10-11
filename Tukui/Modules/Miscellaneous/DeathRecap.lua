@@ -15,7 +15,12 @@ function DeathRecap:OnEvent(event, addon)
 	DeathRecapFrame:CreateShadow()
 	DeathRecapFrame.CloseButton:SkinButton()
 
+	-- Newer clients list the entries in a ScrollBox instead of Recap1..5: only the frame is skinned there
 	for i=1, 5 do
+		if not DeathRecapFrame["Recap"..i] then
+			break
+		end
+
 		local IconBorder = DeathRecapFrame["Recap"..i].SpellInfo.IconBorder
 		local Icon = DeathRecapFrame["Recap"..i].SpellInfo.Icon
 
