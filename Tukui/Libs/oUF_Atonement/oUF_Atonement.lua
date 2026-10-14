@@ -1,3 +1,6 @@
+-- The global GetSpecialization is gone on newer clients (WoW Forever): C_SpecializationInfo
+local GetSpecialization = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization) or GetSpecialization or function() end -- no specs at all on Forever
+
 --[[
 # Element: Atonement Indicator
 
@@ -33,7 +36,7 @@ local oUF = ns.oUF or _G.oUF
 assert(oUF, "oUF_Atonement cannot find an instance of oUF. If your oUF is embedded into a layout, it may not be embedded properly.")
 
 local UnitCanAssist					= _G.UnitCanAssist
-local GetSpecialization				= _G.GetSpecialization
+-- (GetSpecialization: shim at the top of the file)
 local AuraUtil						= _G.AuraUtil
 local GetAuraDataByIndex			= _G.C_UnitAuras.GetAuraDataByIndex
 local GetAuraDataByAuraInstanceID	= _G.C_UnitAuras.GetAuraDataByAuraInstanceID

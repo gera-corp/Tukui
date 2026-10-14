@@ -1,3 +1,6 @@
+-- The global GetSpecialization is gone on newer clients (WoW Forever): C_SpecializationInfo
+local GetSpecialization = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization) or GetSpecialization or function() end -- no specs at all on Forever
+
 --[[
 # Element: Monk Stagger Bar
 

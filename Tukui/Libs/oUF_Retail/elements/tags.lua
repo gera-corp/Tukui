@@ -1,3 +1,6 @@
+-- The global GetSpecialization is gone on newer clients (WoW Forever): C_SpecializationInfo
+local GetSpecialization = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization) or GetSpecialization or function() end -- no specs at all on Forever
+
 -- Credits: Vika, Cladhaire, Tekkub
 --[[
 # Element: Tags
@@ -124,6 +127,9 @@ local _ENV = {
 		return string.format('|cff%02x%02x%02x', r * 255, g * 255, b * 255)
 	end,
 }
+-- tag strings run in this environment: give them the GetSpecialization shim (see the top of the file)
+_ENV.GetSpecialization = GetSpecialization
+
 _ENV.ColorGradient = function(...)
 	return _ENV._FRAME:ColorGradient(...)
 end
