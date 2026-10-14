@@ -164,6 +164,7 @@ Modules\Miscellaneous\AFK.lua
 Modules\Miscellaneous\AltPowerBar.lua
 Modules\Miscellaneous\DeathRecap.lua
 Modules\Miscellaneous\DamageMeter.lua
+Modules\Miscellaneous\CooldownManager.lua
 Modules\Miscellaneous\DropDown.lua
 Modules\Miscellaneous\Durability.lua
 Modules\Miscellaneous\Errors.lua
