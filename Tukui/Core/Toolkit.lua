@@ -181,12 +181,13 @@ Toolkit.API.CreateBackdrop = function(self, BackgroundTemplate, BackgroundTextur
 	local BackdropR, BackdropG, BackdropB = unpack(Toolkit.Settings.BackdropColor)
 	local BorderSize = Toolkit.Functions.Scale(1)
 
-	-- Frames with a *secret* size (Blizzard menus, damage meter bars... on clients with secret
-	-- values): Blizzard's backdrop computes texture coordinates from the size and errors out
-	-- when called from addon code. Use a plain background texture there, same API.
-	local Width = self:GetWidth()
-
-	if issecretvalue and issecretvalue(Width) then
+	-- Clients with secret values: Blizzard's backdrop recomputes its texture coordinates from
+	-- the frame size (on SetBackdrop and in its OnSizeChanged). With our backdropInfo that runs
+	-- tainted, and as soon as the frame gets a *secret* size (Blizzard menus, damage meter
+	-- bars, windows sized from secret data...) it errors out. Checking the size when the
+	-- backdrop is created wasn't enough, frames can become secret-sized later. So on those
+	-- clients Tukui's backgrounds are always a plain texture (same look, same API).
+	if issecretvalue then
 		local Background = self.Backdrop:CreateTexture(nil, "BACKGROUND", nil, -8)
 
 		Background:SetAllPoints()
@@ -237,6 +238,23 @@ Toolkit.API.CreateBackdrop = function(self, BackgroundTemplate, BackgroundTextur
 	self.Backdrop:SetBorderColor(BorderR, BorderG, BorderB)
 end
 
+-- Shadows and glows need Blizzard's edge-file backdrop. Its OnSizeChanged recomputes the
+-- texture coordinates from the size and errors out (tainted by our backdropInfo) once the
+-- frame is secret-sized. On clients with secret values our own frames get a guarded
+-- handler instead: the recompute is skipped while the size is secret.
+local SafeBackdropSizeChanged = function(self)
+	pcall(self.SetupTextureCoordinates, self)
+end
+
+local SafeSetBackdrop = function(Frame, Info)
+	if issecretvalue then
+		Frame:SetScript("OnSizeChanged", SafeBackdropSizeChanged)
+		pcall(Frame.SetBackdrop, Frame, Info)
+	else
+		Frame:SetBackdrop(Info)
+	end
+end
+
 Toolkit.API.CreateShadow = function(self, ShadowScale)
 	if (self.Shadow) then
 		return
@@ -246,7 +264,7 @@ Toolkit.API.CreateShadow = function(self, ShadowScale)
 	local Scale = ShadowScale or 1
 	local Shadow = CreateFrame("Frame", nil, self, "BackdropTemplate")
 
-	Shadow:SetBackdrop({edgeFile = Toolkit.Settings.ShadowTexture, edgeSize = Toolkit.Functions.Scale(4)})
+	SafeSetBackdrop(Shadow, {edgeFile = Toolkit.Settings.ShadowTexture, edgeSize = Toolkit.Functions.Scale(4)})
 	Shadow:SetFrameLevel(Level)
 	Shadow:SetOutside(self, Toolkit.Functions.Scale(3), Toolkit.Functions.Scale(3))
 	Shadow:SetBackdropBorderColor(0, 0, 0, .8)
@@ -266,7 +284,7 @@ Toolkit.API.CreateGlow = function(self, Scale, EdgeSize, R, G, B, Alpha)
 	Glow:SetFrameStrata("BACKGROUND")
 	Glow:SetFrameLevel(Level)
 	Glow:SetOutside(self, 4, 4)
-	Glow:SetBackdrop({edgeFile = Toolkit.Settings.GlowTexture, edgeSize = Toolkit.Functions.Scale(EdgeSize)})
+	SafeSetBackdrop(Glow, {edgeFile = Toolkit.Settings.GlowTexture, edgeSize = Toolkit.Functions.Scale(EdgeSize)})
 	Glow:SetScale(Toolkit.Functions.Scale(Scale))
 	Glow:SetBackdropBorderColor(R, G, B, Alpha)
 
