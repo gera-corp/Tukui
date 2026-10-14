@@ -251,6 +251,13 @@ Movers:SetScript("OnEvent", function(self, event)
 		-- event fires on every loading screen.
 		if T.Retail and not Movers.EditModeHooked then
 			EditModeManagerFrame:HookScript("OnShow", function()
+				-- Shift held while opening Edit Mode: keep Blizzard's Edit Mode, for the settings
+				-- Tukui has no options for (Cooldown Manager orientation, icon size, visibility...).
+				-- Positions still come from Tukui's movers.
+				if IsShiftKeyDown() then
+					return
+				end
+
 				Movers:OpenEditMode()
 
 				HideUIPanel(EditModeManagerFrame)
