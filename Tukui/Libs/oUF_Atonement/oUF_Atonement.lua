@@ -138,7 +138,15 @@ local function Enable(self)
 	local element = self.Atonement
 
 	-- need for Atonement buff to transfer healing was only introduced after MoP
-	if element and oUF.isRetail and playerClass == "PRIEST" then
+	-- Not on WoW Forever (Camelot): no Atonement there, and its aura data is secret
+	local IsForever = WOW_PROJECT_CAMELOT and WOW_PROJECT_ID == WOW_PROJECT_CAMELOT
+
+	if element and IsForever then
+		element:Hide()
+		return
+	end
+
+	if element and oUF.isRetail and not IsForever and playerClass == "PRIEST" then
 		self:RegisterEvent("SPELLS_CHANGED", CheckSpec, true)
 		self:RegisterEvent("UNIT_AURA", Update)
 
