@@ -318,7 +318,7 @@ local Raid = function(self)
 		Window:CreateDropdown("All", "Raid", "RaidBuffs", "Enable buffs display & filtering")
 		Window:CreateSwitch("All", "Raid", "DesaturateBuffs", "Desaturate buffs that are not by me")
 	elseif C.Raid.RaidBuffsStyle.Value == "Aura Track" then
-		Window:CreateSwitch("All", "Raid", "AuraTrack", "Enable auras tracking module for healer (replace buffs)")
+		-- (no "AuraTrack" switch: that setting doesn't exist, choosing the "Aura Track" style above enables it)
 		Window:CreateSwitch("All", "Raid", "AuraTrackIcons", "Use squared icons instead of status bars")
 		Window:CreateSwitch("All", "Raid", "AuraTrackSpellTextures", "Display icons texture on aura squares instead of colored squares")
 		Window:CreateSlider("All", "Raid", "AuraTrackThickness", "Thickness size of status bars in pixel", 2, 10, 1)
