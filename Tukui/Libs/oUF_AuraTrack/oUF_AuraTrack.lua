@@ -495,8 +495,10 @@ end
 
 -- Blizzard aura container mode. Aura data of group members is often secret on this client,
 -- so the classic code below can't read it. The container shows the player's own HoTs /
--- shields on the unit ("HELPFUL|PLAYER|RAID_IN_COMBAT", Blizzard's "self-cast HoTs" filter)
--- as icons or as thin duration bars. Per-spell colors aren't possible there (spell IDs are
+-- shields on the unit as icons or as thin duration bars: the player's buffs lasting at most
+-- MAX_TRACKED_DURATION ("HELPFUL|PLAYER" + maxDuration). Blizzard's "self-cast HoTs" filter
+-- (RAID_IN_COMBAT) showed nothing on WoW Forever: Classic spells like Renew aren't flagged
+-- for it. Long buffs (Fortitude, Inner Fire...) stay out through the duration limit. Per-spell colors aren't possible there (spell IDs are
 -- secret), so icons always use the spell texture and bars the player's class color.
 local InitTrackBar = function(element, button)
 	local bar = CreateFrame("StatusBar", nil, button)
@@ -520,12 +522,16 @@ local InitTrackBar = function(element, button)
 	})
 end
 
+-- HoTs and shields are short; longer buffs of ours aren't tracked
+local MAX_TRACKED_DURATION = 60
+
 local SetupTrackContainer = function(self)
 	local Shared = oUF.TukuiAuraContainer
 	local AuraTrack = self.AuraTrack
 
-	AuraTrack.filter = "HELPFUL|PLAYER|RAID_IN_COMBAT"
+	AuraTrack.filter = "HELPFUL|PLAYER"
 	AuraTrack.disableMouse = true
+	AuraTrack.candidateFilters = {maxDuration = MAX_TRACKED_DURATION}
 
 	-- a custom tracker list is still honored (spell ID matching is allowed for buffs on friends)
 	if AuraTrack.Tracker ~= Tracker then
@@ -535,7 +541,7 @@ local SetupTrackContainer = function(self)
 			SpellIDs[SpellID] = true
 		end
 
-		AuraTrack.candidateFilters = {includeSpellIDs = SpellIDs}
+		AuraTrack.candidateFilters = {includeSpellIDs = SpellIDs, maxDuration = MAX_TRACKED_DURATION}
 	end
 
 	if AuraTrack.Icons then
