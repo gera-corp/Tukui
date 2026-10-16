@@ -44,6 +44,13 @@ local OnMouseDown = function(self, button)
 		return
 	end
 
+	-- Clients with secret values: opening (and loading) Blizzard's spellbook from addon
+	-- code taints it (casting from it gets blocked, action bar cooldowns break). Use the
+	-- micro menu / keybinds there.
+	if issecretvalue then
+		return
+	end
+
 	if button == "LeftButton" then
 		-- Opens Specialization pane
 		PlayerSpellsUtil.TogglePlayerSpellsFrame(1)

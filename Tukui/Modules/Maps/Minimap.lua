@@ -774,20 +774,11 @@ function Minimap:Enable()
 	self:MoveTracking()
 	self:CreateMenu()
 
-	-- Forever: Blizzard_PlayerSpells is LoadOnDemand. PlayerSpellsUtil.Toggle*
-	-- call LoadAddOn() inside, which is blocked from a tainted menu context
-	-- (taint dialog). Preload it here (out of combat, untainted) so the talent
-	-- menu item opens the already-loaded frame without a protected LoadAddOn.
-	-- Note: the global LoadAddOn may be nil in Forever; prefer C_AddOns.LoadAddOn.
-	if C_AddOns and C_AddOns.IsAddOnLoaded and not C_AddOns.IsAddOnLoaded("Blizzard_PlayerSpells") then
-		local loader = (C_AddOns and C_AddOns.LoadAddOn) or (type(LoadAddOn) == "function" and LoadAddOn)
-		if loader then
-			local loaded, reason = loader("Blizzard_PlayerSpells")
-			if not loaded then
-				T.Print("Blizzard_PlayerSpells preload failed: " .. tostring(reason))
-			end
-		end
-	end
+	-- (Tukui used to preload Blizzard_PlayerSpells here for its old minimap menu. Loaded
+	-- from addon code, the whole spellbook was created tainted: casting from it got
+	-- "Tukui blocked", and its spell OnEnter wrote the action bars' ON_BAR_HIGHLIGHT_MARKS
+	-- tainted, so every action button then failed to show its (secret) cooldown. The menu
+	-- clicks Blizzard's micro buttons now, Blizzard loads the spellbook itself.)
 end
 
 -- Need to be sized as soon as possible, because of LibDBIcon10

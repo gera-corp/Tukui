@@ -352,6 +352,13 @@ end
 
 local OnMouseDown = function(self, button)
 	if button == "LeftButton" then
+		-- Clients with secret values: opening Blizzard windows from addon code taints them
+		-- (bank purchases, casting from the spellbook and action bar cooldowns broke). Use
+		-- the micro menu or keybinds there.
+		if issecretvalue then
+			return
+		end
+
 		if InCombatLockdown() then
 			T.Print(ERR_NOT_IN_COMBAT)
 
