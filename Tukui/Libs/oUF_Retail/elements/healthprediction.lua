@@ -103,7 +103,74 @@ local function UpdateSize(self, event, unit)
 	end
 end
 
+-- Clients with secret values (WoW Forever): in combat the heal and absorb amounts are
+-- secret, so the Lua math below can't run and the bars stayed empty. Blizzard's heal
+-- prediction calculator does the same splitting and clamping inside the client and
+-- returns values the status bars accept as they are.
+local function GetCalculator(element)
+	if(not element.calculator) then
+		local calculator = CreateUnitHealPredictionCalculator()
+
+		calculator:SetIncomingHealOverflowPercent(element.maxOverflow or 1.05)
+
+		if(element.showRawAbsorb and Enum.UnitDamageAbsorbClampMode) then
+			calculator:SetDamageAbsorbClampMode(Enum.UnitDamageAbsorbClampMode.MaximumHealth)
+		end
+
+		element.calculator = calculator
+	end
+
+	return element.calculator
+end
+
+local function SetBar(bar, maxHealth, value)
+	if(bar) then
+		bar:SetMinMaxValues(0, maxHealth)
+		bar:SetValue(value)
+		bar:Show()
+	end
+end
+
+local function SetGlow(texture, shown)
+	if(texture) then
+		texture:SetAlphaFromBoolean(shown, 1, 0)
+		texture:Show()
+	end
+end
+
+local function UpdateSecret(self, event, unit)
+	if(self.unit ~= unit) then return end
+
+	local element = self.HealthPrediction
+
+	if(element.PreUpdate) then element:PreUpdate(unit) end
+
+	local calculator = GetCalculator(element)
+
+	UnitGetDetailedHealPrediction(unit, 'player', calculator)
+
+	local _, myIncomingHeal, otherIncomingHeal = calculator:GetIncomingHeals()
+	local absorb, hasOverAbsorb = calculator:GetDamageAbsorbs()
+	local healAbsorb, hasOverHealAbsorb = calculator:GetHealAbsorbs()
+	local maxHealth = UnitHealthMax(unit)
+
+	SetBar(element.myBar, maxHealth, myIncomingHeal)
+	SetBar(element.otherBar, maxHealth, otherIncomingHeal)
+	SetBar(element.absorbBar, maxHealth, absorb)
+	SetBar(element.healAbsorbBar, maxHealth, healAbsorb)
+	SetGlow(element.overAbsorb, hasOverAbsorb)
+	SetGlow(element.overHealAbsorb, hasOverHealAbsorb)
+
+	if(element.PostUpdate) then
+		return element:PostUpdate(unit, myIncomingHeal, otherIncomingHeal, absorb, healAbsorb, hasOverAbsorb, hasOverHealAbsorb)
+	end
+end
+
 local function Update(self, event, unit)
+	if(CreateUnitHealPredictionCalculator and UnitGetDetailedHealPrediction) then
+		return UpdateSecret(self, event, unit)
+	end
+
 	local ok, result = pcall(function()
 		if(self.unit ~= unit) then return end
 
