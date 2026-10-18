@@ -582,7 +582,13 @@ function ActionBars:AddHooks()
 		hooksecurefunc("ActionButton_Update", self.UpdateButton)
 	end
 
-	hooksecurefunc("ActionButton_UpdateRangeIndicator", self.RangeUpdate)
+	-- Not on clients with secret values: the taint log shows action button updates going
+	-- tainted right at ActionButton_UpdateRangeIndicator, after which Blizzard blocks the
+	-- buttons in combat (SetShown) and they can't set their secret cooldowns. Blizzard's
+	-- own range indication stays.
+	if not issecretvalue then
+		hooksecurefunc("ActionButton_UpdateRangeIndicator", self.RangeUpdate)
+	end
 
 	if C.ActionBars.HotKey then
 		if not T.Retail then
