@@ -43,8 +43,11 @@ function ActionBars:DisableBlizzard()
 		InterfaceOptionsActionBarsPanelAlwaysShowActionBars,
 	}
 
-	ActionBarButtonEventsFrame:UnregisterEvent("ACTIONBAR_SHOWGRID")
-	ActionBarButtonEventsFrame:UnregisterEvent("ACTIONBAR_HIDEGRID")
+	-- (kept on WoW Forever: see ActionBars:ShowGrid, empty slots appear while dragging)
+	if not issecretvalue then
+		ActionBarButtonEventsFrame:UnregisterEvent("ACTIONBAR_SHOWGRID")
+		ActionBarButtonEventsFrame:UnregisterEvent("ACTIONBAR_HIDEGRID")
+	end
 	
 	if T.TWW then
 		ActionBarActionEventsFrame:UnregisterEvent("UNIT_SPELLCAST_INTERRUPTED")
@@ -479,6 +482,18 @@ function ActionBars:SetHotKeyText()
 	end
 
 	HotKey:SetVertexColor(1, 1, 1)
+end
+
+-- Always show empty slots. Not on clients with secret values: SetAttribute from addon code
+-- runs the button's OnAttributeChanged (UpdateAction) tainted and leaves a tainted
+-- "showgrid" value that Blizzard reads on every slot change (GetShowGrid), so placing a
+-- spell on the bar tainted the button: blocked SetShown and "SetCooldown ... Secret values
+-- are only allowed during untainted execution". Blizzard shows empty slots itself there
+-- (Edit Mode "Always Show Buttons", and while dragging a spell).
+function ActionBars:ShowGrid(Button)
+	if not issecretvalue then
+		Button:SetAttribute("showgrid", 1)
+	end
 end
 
 function ActionBars:UpdateButton()
