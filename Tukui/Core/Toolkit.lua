@@ -638,22 +638,33 @@ Toolkit.Functions.AddAPI = function(object)
 	end
 end
 
+-- Also called by Loading once the saved settings are read: this PLAYER_LOGIN handler runs
+-- before Loading's (Toolkit.lua loads first), so here it only had the default scale and
+-- the scale chosen in the Tukui GUI was overwritten on every login.
+Toolkit.Functions.ApplyScale = function(self)
+	if InCombatLockdown() then
+		return
+	end
+
+	local CurrentScale = math.floor((self.Settings.UIScale * 100) + .5)
+	local SavedScale = math.floor((GetCVar("uiScale") * 100) + .5)
+
+	SetCVar("useUiScale", 1)
+
+	-- Only change ui scale if cvar was changed
+	if SavedScale ~= CurrentScale then
+		SetCVar("uiScale", self.Settings.UIScale)
+	end
+
+	-- For big monitors, allow ui to be set under 0.64
+	if (self.Settings.UIScale < 0.64) then
+		UIParent:SetScale(self.Settings.UIScale)
+	end
+end
+
 Toolkit.Functions.OnEvent = function(self, event, ...)
 	if event == "PLAYER_LOGIN" then
-		local CurrentScale = math.floor((self.Settings.UIScale * 100) + .5)
-		local SavedScale = math.floor((GetCVar("uiScale") * 100) + .5)
-
-		SetCVar("useUiScale", 1)
-
-		-- Only change ui scale if cvar was changed
-		if SavedScale ~= CurrentScale then
-			SetCVar("uiScale", self.Settings.UIScale)
-		end
-
-		-- For big monitors, allow ui to be set under 0.64
-		if (self.Settings.UIScale < 0.64) then
-			UIParent:SetScale(self.Settings.UIScale)
-		end
+		Toolkit.Functions.ApplyScale(self)
 	elseif event == "ADDON_LOADED" then
 		local Addon = ...
 

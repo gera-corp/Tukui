@@ -360,6 +360,8 @@ function Loading:LoadSettings()
 	T["GUI"]:Enable()
 	T["Profiles"]:Enable()
 	T["Help"]:Enable()
+
+	T.Toolkit.Functions.ApplyScale(T.Toolkit)
 end
 
 function Loading:OnEvent(event)
@@ -425,6 +427,9 @@ function Loading:OnEvent(event)
 		self:MergeUnknownCharacters()
 		TukuiDatabase.Settings[T.MyRealm][T.MyName] = TukuiDatabase.Settings[T.MyRealm][T.MyName] or {}
 		self:LoadCustomSettings()
+
+		T.Toolkit.Settings.UIScale = C.General.UIScale
+		T.Toolkit.Functions.ApplyScale(T.Toolkit)
 
 		if T["Auras"].ApplyLayout then
 			T["Auras"]:ApplyLayout()
