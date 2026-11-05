@@ -69,12 +69,16 @@ local function combat(self, event, unit, eventType, flags, amount, dtype)
 	if (not fontHeight) or (fontHeight <= 0) then fontHeight = 12 end
 	if not fontFlags then fontFlags = nil end
 	local text, arg
+	-- WoW Forever: the amount (and possibly flags) are secret in combat. They can't be
+	-- compared, but a font string can display them.
+	local secretAmount = issecretvalue and issecretvalue(amount)
+	if issecretvalue and issecretvalue(flags) then flags = "" end
 	color = fColors and fColors.STANDARD or colors.STANDARD
 	if eventType == "IMMUNE" and not FeedbackText.ignoreImmune then
 		color = fColors and fColors.IMMUNE or colors.IMMUNE
 		text = CombatFeedbackText[eventType]
 	elseif eventType == "WOUND" and not FeedbackText.ignoreDamage then
-		if amount ~= 0 then
+		if (secretAmount and flags ~= "ABSORB" and flags ~= "BLOCK" and flags ~= "RESIST") or (not secretAmount and amount ~= 0) then
 			if flags == "CRITICAL" then
 				color = fColors and fColors.CRITICAL or colors.CRITICAL
 			elseif  flags == "CRUSHING" then
@@ -123,7 +127,11 @@ local function combat(self, event, unit, eventType, flags, amount, dtype)
 
 	if text then
 		FeedbackText:SetFont(font,fontHeight,fontFlags)
-		FeedbackText:SetFormattedText(text, arg)
+		if secretAmount and (text == damage_format or text == heal_format) then
+			FeedbackText:SetText(amount)
+		else
+			FeedbackText:SetFormattedText(text, arg)
+		end
 		FeedbackText:SetTextColor(unpack(color))
 		FeedbackText:SetAlpha(0)
 		FeedbackText:Show()
