@@ -39,11 +39,30 @@ local RetailLabels = {
 	StoreMicroButton = "S",
 }
 
+-- Closing a micro button alert re-evaluates alert visibility, which shows the
+-- next alert (or the same one) and fires the ShowAlert hook again: without a
+-- guard this recurses until "C stack overflow".
+local HidingAlerts = false
+
 function MicroMenu:HideAlerts()
+	if HidingAlerts then
+		return
+	end
+
+	HidingAlerts = true
 	HelpTip:HideAllSystem("MicroButtons")
+	HidingAlerts = false
 end
 
 function MicroMenu:AddHooks()
+	-- Prefer Blizzard's own switch: with alerts disabled they are never shown,
+	-- so nothing has to be closed (and nothing re-shows them).
+	if MainMenuMicroButton_SetAlertsEnabled then
+		MainMenuMicroButton_SetAlertsEnabled(false, "Tukui")
+
+		return
+	end
+
 	hooksecurefunc("MainMenuMicroButton_ShowAlert", MicroMenu.HideAlerts)
 end
 
