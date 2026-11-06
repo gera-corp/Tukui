@@ -36,7 +36,11 @@ end
 UnitFrames.PartyWidgets = UnitFrames.newWidgetManager("Party", addDefaultWidgets)
 
 function UnitFrames:Party()
-	self:RegisterForClicks("AnyUp")
+	-- Group headers also create frames in combat (someone joins mid-fight), where
+	-- RegisterForClicks is blocked. Those frames only answer the default left click.
+	if not InCombatLockdown() then
+		self:RegisterForClicks("AnyUp")
+	end
 	self:SetScript("OnEnter", UnitFrame_OnEnter)
 	self:SetScript("OnLeave", UnitFrame_OnLeave)
 	self:CreateShadow()

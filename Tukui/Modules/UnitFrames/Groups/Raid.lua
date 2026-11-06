@@ -37,7 +37,11 @@ UnitFrames.RaidWidgets = UnitFrames.newWidgetManager("Raid", addDefaultWidgets)
 
 --[[ Raid style function. ]]
 function UnitFrames.Raid(self)
-	self:RegisterForClicks("AnyUp")
+	-- Group headers also create frames in combat (someone joins mid-fight), where
+	-- RegisterForClicks is blocked. Those frames only answer the default left click.
+	if not InCombatLockdown() then
+		self:RegisterForClicks("AnyUp")
+	end
 	self:SetScript("OnEnter", UnitFrame_OnEnter)
 	self:SetScript("OnLeave", UnitFrame_OnLeave)
 	self:CreateShadow()
