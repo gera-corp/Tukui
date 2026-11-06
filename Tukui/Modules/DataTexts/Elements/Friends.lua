@@ -343,22 +343,51 @@ end
 local WhisperFriend = function(self, name, bnet)
 	Menu:Hide()
 
-	if bnet then
-		ChatFrame_SendBNetTell(name)
-	else
+	local SendBNetTell = ChatFrame_SendBNetTell or (ChatFrameUtil and ChatFrameUtil.SendBNetTell)
+
+	if bnet and SendBNetTell then
+		SendBNetTell(name)
+	elseif not bnet then
 		SetItemRef("player:"..name, format("|Hplayer:%1$s|h[%1$s]|h", name), "LeftButton")
 	end
 end
 
-local OnMouseDown = function(self, button)
-	if button == "LeftButton" then
-		-- Clients with secret values: opening Blizzard windows from addon code taints them
-		-- (bank purchases, casting from the spellbook and action bar cooldowns broke). Use
-		-- the micro menu or keybinds there.
-		if issecretvalue then
-			return
+-- Modern clients: Blizzard's menu system (MenuUtil), built from the same Options table.
+local AddMenuEntries = function(Parent, List)
+	for _, Entry in ipairs(List) do
+		Parent:CreateButton(Entry.text, function()
+			Entry.func(nil, Entry.arg1, Entry.arg2)
+		end)
+	end
+end
+
+local OpenMenu = function(self)
+	if not (MenuUtil and MenuUtil.CreateContextMenu) then
+		T.Miscellaneous.DropDown.Open(Options, Menu, "cursor", 0, 0, "MENU", 2)
+
+		return
+	end
+
+	MenuUtil.CreateContextMenu(self, function(_, Root)
+		Root:CreateTitle(Options[1].text)
+
+		for i = 2, 4 do
+			local Submenu = Root:CreateButton(Options[i].text)
+
+			AddMenuEntries(Submenu, Options[i].menuList)
+			Submenu:SetEnabled(#Options[i].menuList > 0)
 		end
 
+		Root:CreateButton(Options[5].text, Options[5].func)
+	end)
+end
+
+local OnMouseDown = function(self, button)
+	-- Clients with secret values: opening Blizzard windows from addon code taints them
+	-- (bank purchases, casting from the spellbook and action bar cooldowns broke), so a
+	-- left click opens the invite/whisper menu there instead of the friends window. The
+	-- friends window is on the micro menu / keybind.
+	if button == "LeftButton" and not issecretvalue then
 		if InCombatLockdown() then
 			T.Print(ERR_NOT_IN_COMBAT)
 
@@ -366,10 +395,14 @@ local OnMouseDown = function(self, button)
 		end
 
 		ToggleFriendsFrame(1)
+
+		return
 	end
 
-	-- To be updated for new dropdown system
-	if not Menu and button == "RightButton" then
+	if button == "RightButton" or button == "LeftButton" then
+		UpdateBattleNetFriendsCache(select(1, BNGetNumFriends()))
+		UpdateFriendsCache(C_FriendList.GetNumFriends())
+
 		local InviteID = 0
 		local WhisperID = 0
 		local InviteList = Options[2].menuList
@@ -467,7 +500,7 @@ local OnMouseDown = function(self, button)
 			end
 		end
 
-		T.Miscellaneous.DropDown.Open(Options, Menu, "cursor", 0, 0, "MENU", 2)
+		OpenMenu(self)
 	end
 end
 
