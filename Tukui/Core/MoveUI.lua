@@ -249,7 +249,12 @@ Movers:SetScript("OnEvent", function(self, event)
 		-- than hooksecurefunc(EditModeManagerFrame, "EnterEditMode"): on this client a
 		-- hooked Blizzard method breaks when called from secure code. Set up once, this
 		-- event fires on every loading screen.
-		if T.Retail and not Movers.EditModeHooked then
+		-- Clients with secret values (WoW Forever): not there. Closing Edit Mode from addon
+		-- code (HideUIPanel) runs its exit - which re-applies every Edit Mode system (unit
+		-- frames, action bars...) - and the UI panel manager tainted. Blizzard's own code
+		-- then fails on secret values, e.g. the character frame on the player health text.
+		-- Blizzard's Edit Mode stays as is there; Tukui's movers are on /tukui move.
+		if T.Retail and not issecretvalue and not Movers.EditModeHooked then
 			EditModeManagerFrame:HookScript("OnShow", function()
 				-- Shift held while opening Edit Mode: keep Blizzard's Edit Mode, for the settings
 				-- Tukui has no options for (Cooldown Manager orientation, icon size, visibility...).
