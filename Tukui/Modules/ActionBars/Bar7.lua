@@ -18,12 +18,12 @@ function ActionBars:CreateBar7()
 	local NumRow = ceil(NumButtons / ButtonsPerRow)
 
 	if not C.ActionBars.Bar7 then
-		Settings.SetValue("PROXY_SHOW_ACTIONBAR_7", false)
+		ActionBars:SetBlizzardBarShown(7, false)
 
 		return
 	end
 	
-	Settings.SetValue("PROXY_SHOW_ACTIONBAR_7", true)
+	ActionBars:SetBlizzardBarShown(7, true)
 
 	local ActionBar7 = CreateFrame("Frame", "TukuiActionBar7", T.PetHider, "SecureHandlerStateTemplate")
 	ActionBar7:SetFrameStrata("LOW")

@@ -19,7 +19,7 @@ function ActionBars:CreateBar3()
 
 	if not C.ActionBars.BottomRightBar then
 		if T.Retail then
-			Settings.SetValue("PROXY_SHOW_ACTIONBAR_3", false)
+			ActionBars:SetBlizzardBarShown(3, false)
 		else
 			MultiBarBottomRight:SetParent(T.Hider)
 		end
@@ -43,7 +43,7 @@ function ActionBars:CreateBar3()
 	if not T.Retail then
 		MultiBarBottomRight:SetShown(true)
 	else
-		Settings.SetValue("PROXY_SHOW_ACTIONBAR_3", true)
+		ActionBars:SetBlizzardBarShown(3, true)
 	end
 	
 	MultiBarBottomRight:EnableMouse(false)

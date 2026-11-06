@@ -484,6 +484,20 @@ function ActionBars:SetHotKeyText()
 	HotKey:SetVertexColor(1, 1, 1)
 end
 
+-- Show or hide one of Blizzard's action bars through its Edit Mode setting. Only written when
+-- it differs: Settings.SetValue runs the setting's callbacks (bar visibility, Edit Mode
+-- layout) right away in addon code, which leaves the bars' state tainted. Opening the
+-- talents or spellbook in combat then got the bars' grid update blocked ("taint from
+-- Tukui"), and the buttons failed on secret cooldowns. The setting is saved, so after
+-- the first login it is already right and nothing is written.
+function ActionBars:SetBlizzardBarShown(Index, Shown)
+	local Name = "PROXY_SHOW_ACTIONBAR_" .. Index
+
+	if Settings.GetValue(Name) ~= Shown then
+		Settings.SetValue(Name, Shown)
+	end
+end
+
 -- Always show empty slots. Not on clients with secret values: SetAttribute from addon code
 -- runs the button's OnAttributeChanged (UpdateAction) tainted and leaves a tainted
 -- "showgrid" value that Blizzard reads on every slot change (GetShowGrid), so placing a

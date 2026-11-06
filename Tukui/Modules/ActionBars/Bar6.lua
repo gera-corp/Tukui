@@ -18,12 +18,12 @@ function ActionBars:CreateBar6()
 	local NumRow = ceil(NumButtons / ButtonsPerRow)
 
 	if not C.ActionBars.Bar6 then
-		Settings.SetValue("PROXY_SHOW_ACTIONBAR_6", false)
+		ActionBars:SetBlizzardBarShown(6, false)
 
 		return
 	end
 	
-	Settings.SetValue("PROXY_SHOW_ACTIONBAR_6", true)
+	ActionBars:SetBlizzardBarShown(6, true)
 
 	local ActionBar6 = CreateFrame("Frame", "TukuiActionBar6", T.PetHider, "SecureHandlerStateTemplate")
 	ActionBar6:SetFrameStrata("LOW")

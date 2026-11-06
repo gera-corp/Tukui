@@ -19,7 +19,7 @@ function ActionBars:CreateBar4()
 
 	if not C.ActionBars.RightBar then
 		if T.Retail then
-			Settings.SetValue("PROXY_SHOW_ACTIONBAR_4", false)
+			ActionBars:SetBlizzardBarShown(4, false)
 		else
 			MultiBarRight:SetParent(T.Hider)
 		end
@@ -42,7 +42,7 @@ function ActionBars:CreateBar4()
 	if not T.Retail then
 		MultiBarRight:SetShown(true)
 	else
-		Settings.SetValue("PROXY_SHOW_ACTIONBAR_4", true)
+		ActionBars:SetBlizzardBarShown(4, true)
 	end
 	
 	MultiBarRight:EnableMouse(false)
