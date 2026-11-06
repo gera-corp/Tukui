@@ -9,6 +9,43 @@ local Copy = CreateFrame("Frame")
 
 local copyLines = {}
 
+-- Chat line for the copy window. An edit box doesn't render every chat escape sequence
+-- (Battle.net name tokens |K..|k, atlas and texture icons, named colors |cn..:): one such
+-- line left the whole copy window empty. Links keep their visible text, colors are kept as
+-- plain |cAARRGGBB codes, and the line gets the chat type color it has in the chat frame.
+local function NamedColor(name)
+	local Color = _G[name]
+
+	return Color and Color.GenerateHexColor and "|c" .. Color:GenerateHexColor() or ""
+end
+
+local function IsNumber(value)
+	return type(value) == "number" and not (issecretvalue and issecretvalue(value))
+end
+
+local function CopyText(msg, r, g, b)
+	msg = gsub(msg, "|H.-|h(.-)|h", "%1")
+	msg = gsub(msg, "|T.-|t", "")
+	msg = gsub(msg, "|A.-|a", "")
+	msg = gsub(msg, "|K.-|k", "?")
+	msg = gsub(msg, "|n", " ")
+	msg = gsub(msg, "|cn([^:]*):", NamedColor)
+
+	-- protect the color codes, show any other "|" literally (it would start an escape
+	-- sequence in the edit box), then put the color codes back
+	msg = gsub(msg, "|c(%x%x%x%x%x%x%x%x)", "\001%1")
+	msg = gsub(msg, "|r", "\002")
+	msg = gsub(msg, "|", "||")
+	msg = gsub(msg, "\001", "|c")
+	msg = gsub(msg, "\002", "|r")
+
+	if IsNumber(r) and IsNumber(g) and IsNumber(b) then
+		msg = format("|cff%02x%02x%02x%s|r", floor(r * 255 + 0.5), floor(g * 255 + 0.5), floor(b * 255 + 0.5), msg)
+	end
+
+	return msg
+end
+
 -- Keeps the edit box as wide as the visible area and the scroll bar in sync with it.
 local function UpdateScrollBar(frame)
 	local scroll, bar = frame.Scroll, frame.ScrollBar
@@ -145,12 +182,12 @@ function Copy:CopyChat(chatFrame)
 	local count = 0
 
 	for i = 1, chatFrame:GetNumMessages() do
-		local msg = chatFrame:GetMessageInfo(i)
+		local msg, r, g, b = chatFrame:GetMessageInfo(i)
 
 		-- secret strings can't be concatenated by addon code
 		if msg and not (issecretvalue and issecretvalue(msg)) then
 			count = count + 1
-			copyLines[count] = msg
+			copyLines[count] = CopyText(msg, r, g, b)
 		end
 	end
 
@@ -162,6 +199,9 @@ function Copy:CopyChat(chatFrame)
 
 		-- open at the newest lines, once the text has been laid out
 		C_Timer.After(0, function()
+			-- on the first open the scroll frame may not have its size yet when the text is set
+			editBox:SetWidth(frame.Scroll:GetWidth())
+
 			local range = frame.Scroll:GetVerticalScrollRange()
 
 			frame.Scroll:SetVerticalScroll(range)
