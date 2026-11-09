@@ -25,11 +25,25 @@ function ActionBars:CreatePetBar()
 	local ButtonsPerRow = C.ActionBars.BarPetButtonsPerRow
 	local NumRow = ceil(10 / ButtonsPerRow)
 	
-	PetActionBarFrame.ignoreFramePositionManager = true
+	-- Clients with secret values (WoW Forever): Blizzard keeps updating its pet buttons itself.
+	-- Tukui's own update (UpdatePetBar) runs Blizzard's pet bar code from addon code on every
+	-- target change, even without a pet (flash, spell highlight, UpdateCooldowns), and writes
+	-- fields into Blizzard's pet bar and buttons. That leaves Blizzard's action button code
+	-- tainted, and the action bars then fail on secret cooldowns ("SetCooldown ... Secret
+	-- values are only allowed during untainted execution").
+	local BlizzardUpdates = issecretvalue and true or false
+
+	if not BlizzardUpdates then
+		PetActionBarFrame.ignoreFramePositionManager = true
+	end
+
 	PetActionBarFrame:EnableMouse(false)
 	PetActionBarFrame:ClearAllPoints()
 	PetActionBarFrame:SetParent(T.Hider)
-	PetActionBarFrame:UnregisterAllEvents()
+
+	if not BlizzardUpdates then
+		PetActionBarFrame:UnregisterAllEvents()
+	end
 
 	local Bar = CreateFrame("Frame", "TukuiPetActionBar", T.PetHider, "SecureHandlerStateTemplate")
 	Bar:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 28, 233)
@@ -85,6 +99,23 @@ function ActionBars:CreatePetBar()
 	
 	ActionBars:SkinPetButtons()
 	
+	if BlizzardUpdates then
+		RegisterStateDriver(Bar, "visibility", "[@pet,exists,nopossessbar] show; hide")
+
+		local Buttons, FakeButtons = {}, {}
+
+		for i = 1, NUM_PET_ACTION_SLOTS do
+			Buttons[i] = _G["PetActionButton"..i]
+			FakeButtons[i] = _G["TukuiPetActionBarButton"..i]
+		end
+
+		ActionBars:KeepButtonsOnFakeButtons(Bar, Buttons, FakeButtons)
+
+		Movers:RegisterFrame(Bar, "Pet Action Bar")
+
+		return
+	end
+
 	if T.Retail then
 		self:RegisterEvent("UPDATE_VEHICLE_ACTIONBAR")
 	end
