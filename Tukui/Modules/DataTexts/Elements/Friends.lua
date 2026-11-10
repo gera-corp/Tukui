@@ -432,7 +432,9 @@ local OnMouseDown = function(self, button)
 					-- Adding Battle.net Whisper
 					WhisperList[WhisperID] = {
 						text = "|cff00ccff"..BattleTag.."|r",
-						arg1 = BattleTag,
+						-- Battle.net whispers need the account name token (as Blizzard's friends list
+						-- uses), a BattleTag without its number can't be resolved to a friend
+						arg1 = Friend.accountName or Friend.battleTag,
 						arg2 = true,
 						notCheckable = true,
 						func = WhisperFriend,
