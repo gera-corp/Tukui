@@ -27,6 +27,187 @@ EventTrace:SetScript("OnEvent", function(self, event)
 	end
 end)
 
+-- Taint check (/tukui taint): lists values in Blizzard's action bar code that an addon wrote
+-- (tainted), and which addon did it. Clients with secret values refuse to show action button
+-- cooldowns once that code reads a tainted value, and taint.log doesn't record field writes.
+local TaintBarNames = {"ActionButton", "MultiBarBottomLeftButton", "MultiBarBottomRightButton", "MultiBarRightButton", "MultiBarLeftButton", "MultiBar5Button", "MultiBar6Button", "MultiBar7Button", "OverrideActionBarButton", "StanceButton", "PetActionButton"}
+local TaintChildren = {"cooldown", "chargeCooldown", "lossOfControlCooldown", "bar"}
+local TaintGlobalPatterns = {"^ActionButton", "^ActionBar", "^CooldownFrame", "^CooldownViewer", "^MultiActionBar", "^MultiBar", "^MainMenuBar", "^MainActionBar", "^GetAction", "^IsAction", "^HasAction", "^IsUsableAction", "^IsCurrentAction", "^IsAutoRepeatAction", "^IsAttackAction", "^IsConsumableAction", "^IsEquippedAction", "^IsStackableAction", "^IsItemAction", "^IsSpellOverlayed", "^SetCooldown"}
+
+local TaintCheck = function(Quick)
+	local Found, Count, Seen = {}, 0, {}
+
+	local Add = function(Where, Addon)
+		Count = Count + 1
+		Found[Addon] = Found[Addon] or {}
+		tinsert(Found[Addon], Where)
+	end
+
+	local CheckTable = function(Table, Name, Depth)
+		if type(Table) ~= "table" or Seen[Table] then
+			return
+		end
+
+		Seen[Table] = true
+
+		for Key, Value in pairs(Table) do
+			-- tables keyed by frames (like the event frames' button lists) show the frame name
+			local KeyName = type(Key) == "table" and Key.GetName and (Key:GetName() or "<frame>") or tostring(Key)
+			local Ok, Secure, Addon = pcall(issecurevariable, Table, Key)
+
+			if Ok and not Secure then
+				Add(Name .. "[" .. KeyName .. "]", Addon or "?")
+			end
+
+			if Depth > 0 and type(Value) == "table" and not Value.GetObjectType then
+				pcall(CheckTable, Value, Name .. "." .. KeyName, Depth - 1)
+			end
+		end
+	end
+
+	for _, Prefix in ipairs(TaintBarNames) do
+		for i = 1, 12 do
+			local Name = Prefix .. i
+			local Button = _G[Name]
+
+			if Button then
+				pcall(CheckTable, Button, Name, 0)
+
+				for _, Child in ipairs(TaintChildren) do
+					if type(Button[Child]) == "table" then
+						pcall(CheckTable, Button[Child], Name .. "." .. Child, 0)
+					end
+				end
+			end
+		end
+	end
+
+	for _, Name in ipairs({"ActionBarButtonEventsFrame", "ActionBarActionEventsFrame", "MainMenuBar", "MainActionBar", "MultiBarBottomLeft", "MultiBarBottomRight", "MultiBarRight", "MultiBarLeft", "MultiBar5", "MultiBar6", "MultiBar7", "StanceBar", "PetActionBar"}) do
+		if _G[Name] then
+			pcall(CheckTable, _G[Name], Name, 1)
+		end
+	end
+
+	if Quick then
+		return Found, Count
+	end
+
+	for Name, Value in pairs(_G) do
+		if type(Name) == "string" and type(Value) == "table" and Name:find("ActionButton%d+$") and not Name:find("^Tukui") then
+			-- other action buttons, such as Blizzard's gamepad bars
+			pcall(CheckTable, Value, Name, 0)
+
+			for _, Child in ipairs(TaintChildren) do
+				if type(Value[Child]) == "table" then
+					pcall(CheckTable, Value[Child], Name .. "." .. Child, 0)
+				end
+			end
+		end
+
+		if type(Name) == "string" then
+			local Match = false
+
+			for _, Pattern in ipairs(TaintGlobalPatterns) do
+				if Name:find(Pattern) then
+					Match = true
+					break
+				end
+			end
+
+			if Match and not Name:find("^Tukui") then
+				local Secure, Addon = issecurevariable(Name)
+
+				if not Secure then
+					Add(Name, Addon or "?")
+				end
+
+				if type(Value) == "table" and (Name:find("Mixin$") or Name:find("Util$")) then
+					pcall(CheckTable, Value, Name, 0)
+				end
+			elseif Name:find("^C_") and type(Value) == "table" then
+				pcall(CheckTable, Value, Name, 0)
+			end
+		end
+	end
+
+	return Found, Count
+end
+
+local TaintPrint = function()
+	local Found, Count = TaintCheck()
+
+	if Count == 0 then
+		T.Print("Taint check: nothing in the action bar code is tainted right now.")
+
+		return
+	end
+
+	T.Print("Taint check: " .. Count .. " tainted value(s) in the action bar code:")
+
+	for Addon, List in pairs(Found) do
+		local Shown = {}
+
+		for i = 1, min(#List, 8) do
+			Shown[i] = List[i]
+		end
+
+		T.Print("|cffff8000" .. Addon .. "|r (" .. #List .. "): " .. table.concat(Shown, ", ") .. (#List > 8 and ", ..." or ""))
+	end
+end
+
+-- On clients with secret values the check also runs by itself (after loading screens and
+-- every 30 seconds for the buttons) and keeps the first finding of each kind in
+-- TukuiDatabase.TaintReport, so a report survives the /reload that fixes the bars.
+if issecretvalue then
+	local Reported = {}
+	local Recorder = CreateFrame("Frame")
+
+	local Record = function(Quick)
+		if not TukuiDatabase then
+			return
+		end
+
+		local Found = TaintCheck(Quick)
+
+		for Addon, List in pairs(Found) do
+			for _, Where in ipairs(List) do
+				local Key = Addon .. " " .. Where
+
+				if not Reported[Key] then
+					Reported[Key] = true
+
+					TukuiDatabase.TaintReport = TukuiDatabase.TaintReport or {}
+
+					local Report = TukuiDatabase.TaintReport
+
+					tinsert(Report, date("%m/%d %H:%M:%S") .. " " .. (GetZoneText() or "") .. ": " .. Addon .. " -> " .. Where)
+
+					while #Report > 200 do
+						tremove(Report, 1)
+					end
+				end
+			end
+		end
+	end
+
+	local Elapsed = 0
+
+	Recorder:RegisterEvent("PLAYER_ENTERING_WORLD")
+	Recorder:SetScript("OnEvent", function()
+		C_Timer.After(5, function()
+			Record(false)
+		end)
+	end)
+	Recorder:SetScript("OnUpdate", function(_, Delta)
+		Elapsed = Elapsed + Delta
+
+		if Elapsed >= 30 then
+			Elapsed = 0
+			Record(true)
+		end
+	end)
+end
+
 T.SlashHandler = function(cmd)
 	local arg1, arg2, arg3, arg4 = Split(cmd)
 
@@ -189,6 +370,8 @@ T.SlashHandler = function(cmd)
 
 			EventTraceEnabled = true
 		end
+	elseif (arg1 == "taint") then
+		TaintPrint()
 	elseif (arg1 == "move" or arg1 == "moveui") then
 		local Movers = T["Movers"]
 
