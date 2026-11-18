@@ -322,11 +322,20 @@ function ActionBars:UpdateStanceBar()
 					Cooldown:SetAlpha(0)
 				end
 
-				Start, Duration, Enable = GetShapeshiftFormCooldown(i)
-				CooldownFrame_Set(Cooldown, Start, Duration, Enable)
+				-- Clients with secret values (WoW Forever): Blizzard's stance bar keeps updating
+				-- its buttons itself. Running its cooldown code or writing into its bar from addon
+				-- code leaves Blizzard's action button code tainted (as the pet bar did), and the
+				-- action bars then fail on secret cooldowns.
+				if not issecretvalue then
+					Start, Duration, Enable = GetShapeshiftFormCooldown(i)
+					CooldownFrame_Set(Cooldown, Start, Duration, Enable)
+				end
 
 				if IsActive then
-					StanceBarFrame.lastSelected = Button:GetID()
+					if not issecretvalue then
+						StanceBarFrame.lastSelected = Button:GetID()
+					end
+
 					Button:SetChecked(true)
 
 					if Button.Backdrop then

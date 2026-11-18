@@ -44,7 +44,10 @@ function ActionBars:CreateStanceBar()
 	
 	self.Bars.Stance = Bar
 
-	StanceBarFrame.ignoreFramePositionManager = true
+	if not issecretvalue then
+		StanceBarFrame.ignoreFramePositionManager = true
+	end
+
 	StanceBarFrame:StripTextures()
 	StanceBarFrame:EnableMouse(false)
 
