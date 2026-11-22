@@ -114,6 +114,12 @@ local TaintCheck = function(Quick)
 				end
 			end
 
+			-- Blizzard-style constants (STANDARD_TEXT_FONT) and functions (Foo_Bar): an addon
+			-- that overwrites one taints every Blizzard function reading it
+			if not Match and (Name:find("^[A-Z][A-Z0-9_]+$") or (type(Value) == "function" and Name:find("^%u%a+_%u"))) then
+				Match = true
+			end
+
 			if Match and not Name:find("^Tukui") then
 				local Secure, Addon = issecurevariable(Name)
 
@@ -155,12 +161,15 @@ local TaintPrint = function()
 	end
 end
 
--- On clients with secret values the check also runs by itself (after loading screens and
--- every 30 seconds for the buttons) and keeps the first finding of each kind in
+-- On clients with secret values the check also runs by itself (after loading screens, every
+-- 30 seconds for the buttons and every 2 minutes in full, out of combat) and keeps the first finding of each kind in
 -- TukuiDatabase.TaintReport, so a report survives the /reload that fixes the bars.
 if issecretvalue then
 	local Reported = {}
 	local Recorder = CreateFrame("Frame")
+
+	-- Tukui's own skin fields on Blizzard buttons: Blizzard's code never reads them
+	local Ignored = {Backdrop = true, Shadow = true, isSkinned = true, IsSkinned = true, Pushed = true, Highlight = true, Checked = true, IsCooldownTextEdited = true}
 
 	local Record = function(Quick)
 		if not TukuiDatabase then
@@ -172,6 +181,11 @@ if issecretvalue then
 		for Addon, List in pairs(Found) do
 			for _, Where in ipairs(List) do
 				local Key = Addon .. " " .. Where
+				local Field = Where:match("%[([^%]]+)%]$")
+
+				if Addon == "Tukui" and Field and Ignored[Field] then
+					Reported[Key] = true
+				end
 
 				if not Reported[Key] then
 					Reported[Key] = true
@@ -182,7 +196,7 @@ if issecretvalue then
 
 					tinsert(Report, date("%m/%d %H:%M:%S") .. " " .. (GetZoneText() or "") .. ": " .. Addon .. " -> " .. Where)
 
-					while #Report > 200 do
+					while #Report > 500 do
 						tremove(Report, 1)
 					end
 				end
@@ -190,7 +204,67 @@ if issecretvalue then
 		end
 	end
 
-	local Elapsed = 0
+	-- Watch for the moment the buttons' action fields go tainted (seen right after logging
+	-- in): for 2 minutes after each loading screen, check them on every event and every
+	-- frame, and record the events that came just before.
+	local Watcher = CreateFrame("Frame")
+	local WatchButtons = {"ActionButton1", "ActionButton2", "MultiBarBottomLeftButton1", "MultiBarBottomRightButton1", "MultiBarRightButton1", "MultiBarLeftButton1", "ExtraActionButton1"}
+	local WatchFields = {"action", "feedback_action"}
+	local RecentEvents, WatchUntil, Caught = {}, 0, false
+
+	local CheckWatch = function(Where)
+		if Caught then
+			return
+		end
+
+		for _, Name in ipairs(WatchButtons) do
+			local Button = _G[Name]
+
+			if Button then
+				for _, Field in ipairs(WatchFields) do
+					local Ok, Secure, Addon = pcall(issecurevariable, Button, Field)
+
+					if Ok and Secure == false then
+						Caught = true
+
+						-- kept apart from the report, so later reports can't push it out
+						TukuiDatabase.TaintFirst = TukuiDatabase.TaintFirst or {}
+						tinsert(TukuiDatabase.TaintFirst, date("%m/%d %H:%M:%S") .. " FIRST " .. Name .. "[" .. Field .. "] by " .. (Addon or "?") .. " at " .. Where .. "; events before: " .. table.concat(RecentEvents, ", "))
+
+						return
+					end
+				end
+			end
+		end
+	end
+
+	Watcher:RegisterAllEvents()
+	Watcher:SetScript("OnEvent", function(_, Event)
+		if Event == "PLAYER_ENTERING_WORLD" or Event == "PLAYER_LOGIN" then
+			WatchUntil = GetTime() + 120
+		end
+
+		if GetTime() > WatchUntil or Caught or not TukuiDatabase then
+			return
+		end
+
+		CheckWatch("event " .. Event)
+
+		if Event ~= "COMBAT_LOG_EVENT_UNFILTERED" then
+			tinsert(RecentEvents, Event)
+
+			if #RecentEvents > 25 then
+				tremove(RecentEvents, 1)
+			end
+		end
+	end)
+	Watcher:SetScript("OnUpdate", function()
+		if GetTime() <= WatchUntil and not Caught and TukuiDatabase then
+			CheckWatch("frame update")
+		end
+	end)
+
+	local Elapsed, Full = 0, 0
 
 	Recorder:RegisterEvent("PLAYER_ENTERING_WORLD")
 	Recorder:SetScript("OnEvent", function()
@@ -201,9 +275,12 @@ if issecretvalue then
 	Recorder:SetScript("OnUpdate", function(_, Delta)
 		Elapsed = Elapsed + Delta
 
-		if Elapsed >= 30 then
+		if Elapsed >= 30 and not InCombatLockdown() then
 			Elapsed = 0
-			Record(true)
+			Full = Full + 1
+
+			-- the whole check (globals too) every 2 minutes, the buttons every 30 seconds
+			Record(Full % 4 ~= 0)
 		end
 	end)
 end
