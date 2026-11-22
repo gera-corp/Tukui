@@ -19,6 +19,7 @@ function Miscellaneous:Enable()
 	end
 	
 	Miscellaneous["Keybinds"]:Enable()
+	Miscellaneous["KeybindLayouts"]:Enable()
 	Miscellaneous["ThreatBar"]:Enable()
 	Miscellaneous["ItemLevel"]:Enable()
 	Miscellaneous["Alerts"]:Enable()

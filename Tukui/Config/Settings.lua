@@ -170,6 +170,7 @@ C["Misc"] = {
 	["ExperienceEnable"] = true,
 	["AutoSellJunk"] = true,
 	["AutoRepair"] = true,
+	["KeybindLayouts"] = true,
 	["AFKSaver"] = false,
 	["TalkingHeadEnable"] = true,
 	["UIErrorSize"] = 16,

@@ -157,6 +157,7 @@ Modules\Miscellaneous\Grid.lua
 Modules\Miscellaneous\GuildNamesByClassColor.lua
 Modules\Miscellaneous\ItemLevel.lua
 Modules\Miscellaneous\Keybinds.lua
+Modules\Miscellaneous\KeybindLayouts.lua
 Modules\Miscellaneous\MicroMenu.lua
 Modules\Miscellaneous\MirrorTimers.lua
 Modules\Miscellaneous\ObjectiveTracker.lua
