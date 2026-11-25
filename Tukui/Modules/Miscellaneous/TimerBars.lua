@@ -11,7 +11,8 @@ local TimerBars = CreateFrame("Frame")
 -- * Any other harmful spell whose tooltip has a duration ("for 15 sec", "for 2 min"):
 --   stings, marks, DoTs, crowd control... Grouped by mob (up to 5 mobs, the mob
 --   name on top), one bar per spell, restarted on recast. Spells that live on one
---   mob only (Hunter's Mark) move to the new mob. The current target's group is
+--   mob only (Hunter's Mark) move to the new mob; a sting (or curse) replaces the
+--   other sting already on the mob. The current target's group is
 --   opaque, the others are faded.
 -- A group remembers its mob: its GUID when the client doesn't hide it, otherwise
 -- a counter bumped on every target change, plus the mob's nameplate unit. It's
@@ -34,6 +35,27 @@ local HAWK = {
 -- rank IDs work too)
 local SINGLE_TARGET_SPELL_IDS = {
 	1130, -- Hunter's Mark
+}
+
+-- Only one spell of each family stays on a mob (one sting, one curse per caster): casting
+-- another one replaces the bar of the previous one. Classic rank 1 IDs, matched by name.
+local EXCLUSIVE_SPELL_IDS = {
+	{
+		1978, -- Serpent Sting
+		3034, -- Viper Sting
+		3043, -- Scorpid Sting
+		19386, -- Wyvern Sting
+	},
+	{
+		980, -- Curse of Agony
+		702, -- Curse of Weakness
+		704, -- Curse of Recklessness
+		1490, -- Curse of the Elements
+		17862, -- Curse of Shadow
+		1714, -- Curse of Tongues
+		18223, -- Curse of Exhaustion
+		603, -- Curse of Doom
+	},
 }
 
 local DEBUFF_COLOR = {0.85, 0.65, 0.20}
@@ -210,6 +232,28 @@ local function RemoveByName(timers, name)
 			table.remove(timers, i)
 		end
 	end
+end
+
+-- Removes the other spells of the family of this one; returns them (to put back
+-- if the new spell doesn't land)
+local function RemoveExclusive(timers, name, families)
+	local Family = families[name]
+	local Removed
+
+	if not Family then
+		return
+	end
+
+	for i = #timers, 1, -1 do
+		local Other = timers[i]
+
+		if Other.Name ~= name and families[Other.Name] == Family then
+			Removed = Removed or {}
+			table.insert(Removed, table.remove(timers, i))
+		end
+	end
+
+	return Removed
 end
 
 -- Fill a group frame and stack it at height y; returns the next free height
@@ -437,6 +481,9 @@ function TimerBars:OnCast(spellID)
 			RemoveByName(Group.Timers, Name)
 		end
 
+		-- Another sting (curse...) replaces the one already there
+		local Replaced = RemoveExclusive(Group.Timers, Name, self.ExclusiveFamilies)
+
 		-- Group full: the bar closest to running out makes room
 		if #Group.Timers >= MAX_BARS_PER_GROUP then
 			table.sort(Group.Timers, SortByExpiration)
@@ -449,7 +496,7 @@ function TimerBars:OnCast(spellID)
 		Group.LastUsed = Now
 
 		-- remembered until the target confirms or refuses it (see OnCombatText)
-		self.LastDebuff = {Group = Group, Timer = Timer, TargetID = self.TargetID, At = Now}
+		self.LastDebuff = {Group = Group, Timer = Timer, Replaced = Replaced, TargetID = self.TargetID, At = Now}
 
 		Debug("cast", Name, "on target id", Group.TargetID, "guid", Group.GUID and "known" or "secret or none", "plate", Group.Plate or "not found")
 	else
@@ -516,6 +563,17 @@ function TimerBars:OnCombatText(action)
 		end
 	end
 
+	-- The spell it replaced is still on the mob
+	if Last.Replaced then
+		local Now = GetTime()
+
+		for _, Timer in ipairs(Last.Replaced) do
+			if Timer.Expires > Now then
+				table.insert(Last.Group.Timers, Timer)
+			end
+		end
+	end
+
 	Debug("not applied:", action, Last.Timer.Name)
 
 	self:Refresh()
@@ -577,6 +635,18 @@ function TimerBars:Enable()
 
 		if Name then
 			self.SingleTargetNames[Name] = true
+		end
+	end
+
+	self.ExclusiveFamilies = {}
+
+	for Family, SpellIDs in ipairs(EXCLUSIVE_SPELL_IDS) do
+		for _, SpellID in ipairs(SpellIDs) do
+			local Name = C_Spell.GetSpellName(SpellID)
+
+			if Name then
+				self.ExclusiveFamilies[Name] = Family
+			end
 		end
 	end
 
