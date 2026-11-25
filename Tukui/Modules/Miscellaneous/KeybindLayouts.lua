@@ -17,6 +17,8 @@ local Pairs = {
 	{"K", "Л"}, {"L", "Д"}, {";", "Ж"}, {"'", "Э"},
 	{"Z", "Я"}, {"X", "Ч"}, {"C", "С"}, {"V", "М"}, {"B", "И"}, {"N", "Т"}, {"M", "Ь"},
 	{",", "Б"}, {".", "Ю"}, {"`", "Ё"},
+	-- Ё is outside the А-Я range: the client may name that key in lower case
+	{"`", "ё"},
 }
 
 local Modifiers = {"", "SHIFT-", "CTRL-", "CTRL-SHIFT-", "ALT-", "ALT-SHIFT-", "ALT-CTRL-", "ALT-CTRL-SHIFT-"}

@@ -718,7 +718,11 @@ if T.Retail then
 			ObjectiveTrackerFrameHeaderMenuMinimizeButton.Backdrop.Texture:SetTexture(C.Medias.ArrowUp)
 		]]
 
-		-- Add a keybind for toggling (SHIFT-O)
+		-- Add a keybind for toggling (SHIFT-O). Enable runs on every loading screen: once only
+		if self.ToggleButton then
+			return
+		end
+
 		self.ToggleButton = CreateFrame("Button", "TukuiObjectiveTrackerToggleButton", UIParent, "SecureActionButtonTemplate")
 		self.ToggleButton:SetScript("OnClick", self.Toggle)
 
