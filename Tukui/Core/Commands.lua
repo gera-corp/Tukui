@@ -92,6 +92,17 @@ local TaintCheck = function(Quick)
 		return Found, Count
 	end
 
+	-- Blizzard's action bar settings (an addon writing them taints the bar updates)
+	if Settings and Settings.GetSetting then
+		for i = 2, 8 do
+			local Ok, Setting = pcall(Settings.GetSetting, "PROXY_SHOW_ACTIONBAR_" .. i)
+
+			if Ok and type(Setting) == "table" then
+				pcall(CheckTable, Setting, "Setting[PROXY_SHOW_ACTIONBAR_" .. i .. "]", 1)
+			end
+		end
+	end
+
 	for Name, Value in pairs(_G) do
 		if type(Name) == "string" and type(Value) == "table" and Name:find("ActionButton%d+$") and not Name:find("^Tukui") then
 			-- other action buttons, such as Blizzard's gamepad bars
@@ -204,19 +215,19 @@ if issecretvalue then
 		end
 	end
 
-	-- Watch for the moment the buttons' action fields go tainted (seen right after logging
-	-- in): for 2 minutes after each loading screen, check them on every event and every
-	-- frame, and record the events that came just before.
+	-- Watch for the moment the buttons' action fields go tainted: check them on every event
+	-- and every frame, for the whole session, and record the events that came just before.
+	-- Re-armed once the fields are clean again (Blizzard rewrote them), up to 20 records.
 	local Watcher = CreateFrame("Frame")
 	local WatchButtons = {"ActionButton1", "ActionButton2", "MultiBarBottomLeftButton1", "MultiBarBottomRightButton1", "MultiBarRightButton1", "MultiBarLeftButton1", "ExtraActionButton1"}
 	local WatchFields = {"action", "feedback_action"}
-	local RecentEvents, WatchUntil, Caught = {}, 0, false
+	local RecentEvents, Caught, Records = {}, false, 0
+	-- call stack of the last clean action change: these events fire from inside Blizzard's
+	-- button updates, so the stack shows what started the update
+	local LastStack, Stack = "", ""
+	local Noisy = {COMBAT_LOG_EVENT_UNFILTERED = true, UNIT_POWER_FREQUENT = true, UNIT_AURA = true, UNIT_HEALTH = true}
 
 	local CheckWatch = function(Where)
-		if Caught then
-			return
-		end
-
 		for _, Name in ipairs(WatchButtons) do
 			local Button = _G[Name]
 
@@ -225,41 +236,53 @@ if issecretvalue then
 					local Ok, Secure, Addon = pcall(issecurevariable, Button, Field)
 
 					if Ok and Secure == false then
-						Caught = true
+						if not Caught and Records < 20 then
+							Caught = true
+							Records = Records + 1
 
-						-- kept apart from the report, so later reports can't push it out
-						TukuiDatabase.TaintFirst = TukuiDatabase.TaintFirst or {}
-						tinsert(TukuiDatabase.TaintFirst, date("%m/%d %H:%M:%S") .. " FIRST " .. Name .. "[" .. Field .. "] by " .. (Addon or "?") .. " at " .. Where .. "; events before: " .. table.concat(RecentEvents, ", "))
+							-- kept apart from the report, so later reports can't push it out
+							TukuiDatabase.TaintFirst = TukuiDatabase.TaintFirst or {}
+							tinsert(TukuiDatabase.TaintFirst, date("%m/%d %H:%M:%S") .. " " .. (GetZoneText() or "") .. " FIRST " .. Name .. "[" .. Field .. "] by " .. (Addon or "?") .. " at " .. Where .. (InCombatLockdown() and " (combat)" or "") .. "; events before: " .. table.concat(RecentEvents, ", ") .. " || STACK NOW: " .. Stack .. " || STACK BEFORE (clean): " .. LastStack)
+						end
 
 						return
 					end
 				end
 			end
 		end
+
+		-- all clean again: catch the next time
+		Caught = false
 	end
 
 	Watcher:RegisterAllEvents()
 	Watcher:SetScript("OnEvent", function(_, Event)
-		if Event == "PLAYER_ENTERING_WORLD" or Event == "PLAYER_LOGIN" then
-			WatchUntil = GetTime() + 120
+		if not TukuiDatabase then
+			return
 		end
 
-		if GetTime() > WatchUntil or Caught or not TukuiDatabase then
-			return
+		if Event == "ACTION_RANGE_CHECK_UPDATE" or Event == "ACTIONBAR_SLOT_CHANGED" then
+			Stack = debugstack(2, 25, 0) or ""
+		else
+			Stack = ""
 		end
 
 		CheckWatch("event " .. Event)
 
-		if Event ~= "COMBAT_LOG_EVENT_UNFILTERED" then
+		if Stack ~= "" and not Caught then
+			LastStack = Stack
+		end
+
+		if not Noisy[Event] then
 			tinsert(RecentEvents, Event)
 
-			if #RecentEvents > 25 then
+			if #RecentEvents > 30 then
 				tremove(RecentEvents, 1)
 			end
 		end
 	end)
 	Watcher:SetScript("OnUpdate", function()
-		if GetTime() <= WatchUntil and not Caught and TukuiDatabase then
+		if TukuiDatabase then
 			CheckWatch("frame update")
 		end
 	end)
