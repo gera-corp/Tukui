@@ -499,12 +499,38 @@ end
 -- talents or spellbook in combat then got the bars' grid update blocked ("taint from
 -- Tukui"), and the buttons failed on secret cooldowns. The setting is saved, so after
 -- the first login it is already right and nothing is written.
+-- Clients with secret values (WoW Forever): not written at all. Settings.SetValue from addon
+-- code also leaves the setting object itself tainted (SettingMixin:SetValue writes its
+-- fields), and Blizzard's later bar updates read it: every loading screen then tainted the
+-- action buttons from that bar on. The player is asked to change it in the options instead.
 function ActionBars:SetBlizzardBarShown(Index, Shown)
 	local Name = "PROXY_SHOW_ACTIONBAR_" .. Index
+	local Current = Settings.GetValue(Name)
 
-	if Settings.GetValue(Name) ~= Shown then
-		Settings.SetValue(Name, Shown)
+	if Current == Shown then
+		return
 	end
+
+	if issecretvalue then
+		if Current ~= nil then
+			ActionBars.BarSettingsToChange = ActionBars.BarSettingsToChange or {}
+			ActionBars.BarSettingsToChange[Index] = Shown
+
+			if not ActionBars.BarSettingsTimer then
+				ActionBars.BarSettingsTimer = true
+
+				C_Timer.After(10, function()
+					for BarIndex, Show in pairs(ActionBars.BarSettingsToChange) do
+						print("|cffff8000Tukui:|r please " .. (Show and "turn on" or "turn off") .. " Action Bar " .. BarIndex .. " in Options > Gameplay > Action Bars (Tukui can't change it on this client without breaking the action bar cooldowns).")
+					end
+				end)
+			end
+		end
+
+		return
+	end
+
+	Settings.SetValue(Name, Shown)
 end
 
 -- Always show empty slots. Not on clients with secret values: SetAttribute from addon code

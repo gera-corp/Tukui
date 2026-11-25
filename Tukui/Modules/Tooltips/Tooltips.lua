@@ -449,16 +449,75 @@ function Tooltip:SetBackdropStyle()
 	self:SetBackdropBorderColor(unpack(C.General.BackdropColor))
 end
 
-function Tooltip:AddHooks()
-	hooksecurefunc("GameTooltip_SetDefaultAnchor", self.SetTooltipDefaultAnchor)
+-- Clients with secret values (WoW Forever): Blizzard's default anchor follows its tooltip
+-- container, so move the container to Tukui's anchor instead of hooking the anchor function.
+-- (The "anchor at mouse cursor" option needs that hook: not there.)
+local GetDefaultContainer = function()
+	return GameTooltipDefaultContainer or SharedTooltipDefaultContainer
+end
 
-	if C.Tooltips.UnitBorderColor then
-		hooksecurefunc("GameTooltip_UnitColor", self.SetUnitBorderColor)
-		hooksecurefunc("GameTooltip_ShowCompareItem", self.SetCompareItemBorderColor)
+function Tooltip:PlaceDefaultContainer()
+	local Container = GetDefaultContainer()
+
+	if not Container or InCombatLockdown() and Container:IsProtected() then
+		return
 	end
 
-	if C.Tooltips.UnitBorderColor or C.Tooltips.ItemBorderColor then
-		hooksecurefunc("GameTooltip_ClearMoney", self.ResetBorderColor)
+	local _, RelativeTo = Container:GetPoint(1)
+
+	if RelativeTo ~= Tooltip.Anchor or Container:GetNumPoints() ~= 1 then
+		Container:ClearAllPoints()
+		Container:SetPoint("BOTTOMRIGHT", Tooltip.Anchor, "TOPRIGHT", 0, 9)
+	end
+end
+
+function Tooltip:AddHooks()
+	-- Not on clients with secret values: Blizzard's action buttons anchor their tooltip
+	-- through these functions while they update (mouse over a button), and after a hook the
+	-- rest of the update runs tainted: every button's action and cooldown go tainted and
+	-- "SetCooldown ... Secret values are only allowed during untainted execution" follows.
+	if issecretvalue then
+		local Placer = CreateFrame("Frame")
+
+		Placer:RegisterEvent("PLAYER_ENTERING_WORLD")
+		Placer:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
+		Placer:RegisterEvent("PLAYER_REGEN_ENABLED")
+		Placer:SetScript("OnEvent", function()
+			-- after Edit Mode has placed its systems
+			C_Timer.After(0, Tooltip.PlaceDefaultContainer)
+		end)
+
+		self:PlaceDefaultContainer()
+
+		if C.Tooltips.UnitBorderColor then
+			hooksecurefunc("GameTooltip_UnitColor", self.SetUnitBorderColor)
+		end
+
+		-- border back to default before a tooltip that isn't an item or a unit
+		if (C.Tooltips.UnitBorderColor or C.Tooltips.ItemBorderColor) and TooltipDataProcessor and TooltipDataProcessor.AllTypes then
+			TooltipDataProcessor.AddTooltipPostCall(TooltipDataProcessor.AllTypes, function(TT, Data)
+				local Type = Data and Data.type
+
+				if issecretvalue(Type) then
+					return
+				end
+
+				if Type ~= Enum.TooltipDataType.Item and Type ~= Enum.TooltipDataType.Unit then
+					Tooltip.ResetBorderColor(TT)
+				end
+			end)
+		end
+	else
+		hooksecurefunc("GameTooltip_SetDefaultAnchor", self.SetTooltipDefaultAnchor)
+
+		if C.Tooltips.UnitBorderColor then
+			hooksecurefunc("GameTooltip_UnitColor", self.SetUnitBorderColor)
+			hooksecurefunc("GameTooltip_ShowCompareItem", self.SetCompareItemBorderColor)
+		end
+
+		if C.Tooltips.UnitBorderColor or C.Tooltips.ItemBorderColor then
+			hooksecurefunc("GameTooltip_ClearMoney", self.ResetBorderColor)
+		end
 	end
 
 	if T.Retail and select(4, GetBuildInfo()) > 100000 then -- Need to be after prepatch.

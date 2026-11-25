@@ -6,6 +6,25 @@ local Replace = string.gsub
 local FlyoutButtons = 0
 local Noop = function() end
 
+-- Clients with secret values: the border frame inside an action button is a BackdropTemplate
+-- frame made by Tukui, so its OnSizeChanged handler (a mixin method copied onto the frame by
+-- our CreateFrame) counts as Tukui's. It fires when Blizzard shows a button in the middle of
+-- its button updates (bar:UpdateShownButtons after a slot change), and the rest of that
+-- update then ran tainted: the next buttons' action, then "SetCooldown ... Secret values are
+-- only allowed during untainted execution". There the border is plain textures (no
+-- backdropInfo), so the handler has nothing to do anyway.
+function ActionBars:RemoveBackdropScripts(Button)
+	if not issecretvalue then
+		return
+	end
+
+	for _, Frame in ipairs({Button.Backdrop, Button.Shadow}) do
+		if Frame and Frame:GetScript("OnSizeChanged") then
+			Frame:SetScript("OnSizeChanged", nil)
+		end
+	end
+end
+
 function ActionBars:SkinButton(button)
 	local Name = button:GetName()
 	local Action = button.action
@@ -64,13 +83,26 @@ function ActionBars:SkinButton(button)
 		Button:CreateBackdrop()
 
 		if T.Retail then
-			Button.Backdrop:SetParent(T.PetHider)
+			-- Clients with secret values (WoW Forever): the border stays a child of the button,
+			-- so it shows and hides with it. No OnShow/OnHide script hooks there: Blizzard
+			-- shows and hides the buttons in the middle of its button updates (after a loading
+			-- screen), and after the hook the rest of that update ran tainted - every button's
+			-- action, then "SetCooldown ... Secret values are only allowed during untainted
+			-- execution".
+			if not issecretvalue then
+				Button.Backdrop:SetParent(T.PetHider)
+			end
+
+			ActionBars:RemoveBackdropScripts(Button)
+
 			Button.Backdrop:SetBackdropColor(0,0,0,0)
 			Button.Backdrop:EnableMouse(false)
 			Button.Backdrop:SetFrameLevel(Button:GetFrameLevel() + 2)
 
-			Button:HookScript("OnShow", function(self) self.Backdrop:Show() end)
-			Button:HookScript("OnHide", function(self) self.Backdrop:Hide() end)
+			if not issecretvalue then
+				Button:HookScript("OnShow", function(self) self.Backdrop:Show() end)
+				Button:HookScript("OnHide", function(self) self.Backdrop:Hide() end)
+			end
 		end
 
 		if C.ActionBars.HideBackdrop then
@@ -171,6 +203,8 @@ function ActionBars:SkinPetAndShiftButton(Normal, Button, Icon, Name, Pet)
 	if C.ActionBars.HideBackdrop then
 		Button:CreateShadow()
 	end
+
+	ActionBars:RemoveBackdropScripts(Button)
 
 	if (C.ActionBars.HotKey) then
 		HotKey:SetFontObject(Font)
